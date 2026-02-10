@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reviews Agent Console</title>
+  <style>
+    :root {
+      --bg: #eef3f7;
+      --panel: #ffffff;
+      --ink: #1f2f39;
+      --muted: #617482;
+      --accent: #0f766e;
+      --accent2: #1f5f8b;
+      --border: #d6e0e8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(145deg, #e8eff4, #f7fbfd);
+      color: var(--ink);
+      padding: 24px;
+    }
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 1.5rem;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      font: inherit;
+      resize: vertical;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      align-items: center;
+    }
+    button {
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    pre {
+      background: #f8fbfe;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+    }
+    .steps {
+      display: grid;
+      gap: 10px;
+    }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fcfeff;
+    }
+    .step h3 {
+      margin: 0 0 6px 0;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <section class="card">
+      <h1>Reviews Agent Console</h1>
+      <p>Enter a business question, run the agent, inspect response + full steps trace.</p>
+    </section>
+
+    <section class="card">
+      <label for="prompt"><strong>Prompt</strong></label>
+      <textarea id="prompt" placeholder="Example: What do guests think about wifi signal in Santa Clara?"></textarea>
+      <div class="row">
+        <button id="runBtn">Run Agent</button>
+        <span id="status" class="muted">Idle</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Final Response</h2>
+      <pre id="finalResponse">No run yet.</pre>
+    </section>
+
+    <section class="card">
+      <h2>Steps</h2>
+      <div id="steps" class="steps"></div>
+    </section>
+  </main>
+
+  <script>
+    const promptEl = document.getElementById("prompt");
+    const runBtn = document.getElementById("runBtn");
+    const statusEl = document.getElementById("status");
+    const finalEl = document.getElementById("finalResponse");
+    const stepsEl = document.getElementById("steps");
+
+    function renderSteps(steps) {
+      stepsEl.innerHTML = "";
+      if (!steps || !steps.length) {
+        stepsEl.textContent = "No steps recorded.";
+        return;
+      }
+      for (const step of steps) {
+        const div = document.createElement("div");
+        div.className = "step";
+        div.innerHTML = `
+          <h3>${step.module}</h3>
+          <strong>prompt</strong>
+          <pre>${JSON.stringify(step.prompt, null, 2)}</pre>
+          <strong>response</strong>
+          <pre>${JSON.stringify(step.response, null, 2)}</pre>
+        `;
+        stepsEl.appendChild(div);
+      }
+    }
+
+    runBtn.addEventListener("click", async () => {
+      const prompt = promptEl.value.trim();
+      if (!prompt) {
+        statusEl.textContent = "Please enter a prompt.";
+        return;
+      }
+
+      runBtn.disabled = true;
+      statusEl.textContent = "Running...";
+      finalEl.textContent = "Working...";
+      stepsEl.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/execute", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({prompt}),
+        });
+        const data = await res.json();
+        finalEl.textContent = data.response ?? `(error) ${data.error}`;
+        renderSteps(data.steps || []);
+        statusEl.textContent = `Done (${data.status})`;
+      } catch (err) {
+        finalEl.textContent = String(err);
+        statusEl.textContent = "Failed";
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

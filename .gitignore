@@ -1,0 +1,35 @@
+﻿# Secrets
+.env
+.env.*
+
+# Python cache/build
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+
+# Local runtime artifacts
+data/
+ingest_state/
+outputs/
+eda_output/
+
+# Large local datasets / docs not needed for deploy
+airbnb_reviews/
+project_guidelines/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
