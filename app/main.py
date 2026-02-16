@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import logging
 from pathlib import Path
 
@@ -29,6 +31,11 @@ from app.schemas import (
     MarketWatchAlertsResponse,
     MarketWatchRunResponse,
     StepLog,
+    ThresholdLabelCandidate,
+    ThresholdLabelCase,
+    ThresholdLabelingDataResponse,
+    ThresholdLabelSaveRequest,
+    ThresholdLabelSaveResponse,
     TeamInfoResponse,
     TeamStudentResponse,
 )
@@ -55,6 +62,8 @@ ARCH_PATH = STATIC_DIR / "model_architecture.png"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+THRESHOLD_LABEL_POOL_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_label_pool.jsonl"
+THRESHOLD_GOLD_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_gold.csv"
 
 
 # Shared services are initialized once and reused by all agents.
@@ -80,6 +89,18 @@ web_scraper = PlaywrightReviewScraper(
     allowlist=settings.scraping_allowlist,
     default_max_reviews=settings.scraping_default_max_reviews,
     timeout_seconds=settings.scraping_timeout_seconds,
+    require_source_selectors=settings.scraping_require_source_selectors,
+    min_review_chars=settings.scraping_min_review_chars,
+    min_token_count=settings.scraping_min_token_count,
+    reject_private_use_ratio=settings.scraping_reject_private_use_ratio,
+    navigation_click_timeout_ms=settings.scraping_navigation_click_timeout_ms,
+    gmaps_locale=settings.scraping_gmaps_locale,
+    gmaps_viewport_width=settings.scraping_gmaps_viewport_width,
+    gmaps_viewport_height=settings.scraping_gmaps_viewport_height,
+    gmaps_user_agents=settings.scraping_gmaps_user_agents,
+    gmaps_scroll_passes=settings.scraping_gmaps_scroll_passes,
+    gmaps_scroll_pause_ms=settings.scraping_gmaps_scroll_pause_ms,
+    gmaps_nav_timeout_ms=settings.scraping_gmaps_nav_timeout_ms,
 )
 web_ingest_service = WebReviewIngestService(
     enabled=settings.scraping_quarantine_upsert_enabled,
@@ -92,10 +113,22 @@ market_data_providers = MarketDataProviders(
     ticketmaster_api_key=settings.ticketmaster_api_key,
     timeout_seconds=20,
 )
-market_alert_store = create_market_alert_store(
-    database_url=settings.database_url,
-    sqlite_path=settings.market_watch_alerts_db_path,
-)
+try:
+    market_alert_store = create_market_alert_store(
+        database_url=settings.database_url,
+        sqlite_path=settings.market_watch_alerts_db_path,
+    )
+except Exception as exc:
+    # Keep the API bootable even if DB wiring is temporarily broken in deployment env.
+    logger.warning(
+        "market_alert_store init failed, falling back to /tmp sqlite: %s: %s",
+        type(exc).__name__,
+        exc,
+    )
+    market_alert_store = create_market_alert_store(
+        database_url=None,
+        sqlite_path="/tmp/market_watch_alerts.db",
+    )
 market_watch_agent = MarketWatchAgent(
     providers=market_data_providers,
     alert_store=market_alert_store,
@@ -117,10 +150,203 @@ agent_registry: dict[str, Agent] = {
         chat_service=chat_service,
         web_scraper=web_scraper,
         web_ingest_service=web_ingest_service,
-        config=ReviewsAgentConfig(top_k=settings.pinecone_top_k),
+        config=ReviewsAgentConfig(
+            top_k=settings.pinecone_top_k,
+            relevance_score_threshold=settings.reviews_relevance_score_threshold,
+            min_lexical_relevance_for_upsert=settings.scraping_min_lexical_relevance_for_upsert,
+        ),
     ),
     "market_watch_agent": market_watch_agent,
 }
+
+
+def _load_threshold_label_pool() -> list[dict[str, object]]:
+    """Load JSONL label-pool cases used by threshold calibration UI."""
+
+    if not THRESHOLD_LABEL_POOL_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Label pool file not found: {THRESHOLD_LABEL_POOL_PATH}. "
+                "Run scripts/export_threshold_labeling_pool.py first."
+            ),
+        )
+
+    cases: list[dict[str, object]] = []
+    with THRESHOLD_LABEL_POOL_PATH.open("r", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            raw = line.strip()
+            if not raw:
+                continue
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Invalid JSONL in {THRESHOLD_LABEL_POOL_PATH} at line {line_no}: {exc}",
+                ) from exc
+            case_id = str(row.get("case_id", "")).strip()
+            if not case_id:
+                continue
+            cases.append(row)
+    return cases
+
+
+def _load_threshold_gold_rows() -> tuple[list[dict[str, str]], dict[str, dict[str, object]]]:
+    """Load existing manual labels from CSV and index by case_id."""
+
+    rows: list[dict[str, str]] = []
+    labels_by_case: dict[str, dict[str, object]] = {}
+    if not THRESHOLD_GOLD_PATH.exists():
+        return rows, labels_by_case
+
+    with THRESHOLD_GOLD_PATH.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            case_id = str(row.get("case_id", "")).strip()
+            if not case_id:
+                continue
+            should_answer_raw = str(row.get("should_answer", "")).strip()
+            relevant_vector_ids = [
+                vector_id.strip()
+                for vector_id in str(row.get("relevant_vector_ids", "")).split("|")
+                if vector_id.strip()
+            ]
+            if should_answer_raw == "1":
+                should_answer: bool | None = True
+            elif should_answer_raw == "0":
+                should_answer = False
+            else:
+                should_answer = None
+                should_answer_raw = ""
+
+            clean_row = {
+                "case_id": case_id,
+                "should_answer": should_answer_raw,
+                "relevant_vector_ids": "|".join(relevant_vector_ids),
+            }
+            rows.append(clean_row)
+            labels_by_case[case_id] = {
+                "should_answer": should_answer,
+                "relevant_vector_ids": relevant_vector_ids,
+            }
+    return rows, labels_by_case
+
+
+def _build_threshold_label_cases() -> tuple[list[ThresholdLabelCase], int]:
+    """Merge label-pool candidates with current gold labels for UI rendering."""
+
+    pool_cases_raw = _load_threshold_label_pool()
+    pool_cases: list[dict[str, object]] = []
+    seen_case_keys: set[tuple[str, str, str]] = set()
+    for pool_case in pool_cases_raw:
+        case_key = (
+            str(pool_case.get("property_id", "")).strip(),
+            str(pool_case.get("topic", "")).strip(),
+            str(pool_case.get("prompt", "")).strip(),
+        )
+        if case_key in seen_case_keys:
+            continue
+        seen_case_keys.add(case_key)
+        pool_cases.append(pool_case)
+    _, labels_by_case = _load_threshold_gold_rows()
+
+    merged_cases: list[ThresholdLabelCase] = []
+    labeled_cases = 0
+    for pool_case in pool_cases:
+        case_id = str(pool_case.get("case_id", "")).strip()
+        candidates_raw = pool_case.get("candidates") or []
+        if not isinstance(candidates_raw, list):
+            candidates_raw = []
+
+        candidates: list[ThresholdLabelCandidate] = []
+        candidate_ids: set[str] = set()
+        for candidate in candidates_raw:
+            if not isinstance(candidate, dict):
+                continue
+            vector_id = str(candidate.get("vector_id", "")).strip()
+            if not vector_id:
+                continue
+            score_raw = candidate.get("score", 0.0)
+            try:
+                score = float(score_raw)
+            except (TypeError, ValueError):
+                score = 0.0
+            candidate_ids.add(vector_id)
+            candidates.append(
+                ThresholdLabelCandidate(
+                    vector_id=vector_id,
+                    score=score,
+                    review_text=str(candidate.get("review_text", "")),
+                    review_id=(
+                        str(candidate.get("review_id"))
+                        if candidate.get("review_id") is not None
+                        else None
+                    ),
+                    property_id=(
+                        str(candidate.get("property_id"))
+                        if candidate.get("property_id") is not None
+                        else None
+                    ),
+                    region=(str(candidate.get("region")) if candidate.get("region") is not None else None),
+                    review_date=(
+                        str(candidate.get("review_date"))
+                        if candidate.get("review_date") is not None
+                        else None
+                    ),
+                )
+            )
+
+        label = labels_by_case.get(case_id, {})
+        should_answer = label.get("should_answer")
+        relevant_vector_ids = [
+            vector_id
+            for vector_id in label.get("relevant_vector_ids", [])
+            if vector_id in candidate_ids
+        ]
+        labeled = should_answer is not None
+        if labeled:
+            labeled_cases += 1
+
+        merged_cases.append(
+            ThresholdLabelCase(
+                case_id=case_id,
+                property_id=str(pool_case.get("property_id", "")),
+                region=str(pool_case.get("region", "")),
+                tier=str(pool_case.get("tier", "")),
+                topic=str(pool_case.get("topic", "")),
+                prompt=str(pool_case.get("prompt", "")),
+                candidate_count=len(candidates),
+                candidates=candidates,
+                should_answer=should_answer,
+                relevant_vector_ids=relevant_vector_ids,
+                labeled=labeled,
+            )
+        )
+
+    return merged_cases, labeled_cases
+
+
+def _write_threshold_gold_rows(rows: list[dict[str, str]]) -> None:
+    """Write gold CSV atomically to avoid partial label-file corruption."""
+
+    THRESHOLD_GOLD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = THRESHOLD_GOLD_PATH.with_suffix(".csv.tmp")
+    with temp_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["case_id", "should_answer", "relevant_vector_ids"],
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "case_id": str(row.get("case_id", "")).strip(),
+                    "should_answer": str(row.get("should_answer", "")).strip(),
+                    "relevant_vector_ids": str(row.get("relevant_vector_ids", "")).strip(),
+                }
+            )
+    temp_path.replace(THRESHOLD_GOLD_PATH)
 
 
 def _build_effective_context(payload: ExecuteRequest) -> dict[str, object]:
@@ -278,7 +504,16 @@ market_watch_scheduler = MarketWatchScheduler(
 def startup() -> None:
     """Ensure static assets exist and start autonomous scheduler when configured."""
 
-    ensure_architecture_png(ARCH_PATH)
+    # Vercel/runtime filesystem may be read-only; skip regeneration if file exists or write fails.
+    if not ARCH_PATH.exists():
+        try:
+            ensure_architecture_png(ARCH_PATH)
+        except Exception as exc:
+            logger.warning(
+                "model_architecture generation skipped: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
     market_watch_scheduler.start()
 
 
@@ -294,6 +529,99 @@ def web_ui(request: Request) -> HTMLResponse:
     """Minimal UI for running the agent and inspecting `steps` trace."""
 
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/labeling", response_class=HTMLResponse)
+def labeling_ui(request: Request) -> HTMLResponse:
+    """UI for manual relevance-label selection during threshold calibration."""
+
+    return templates.TemplateResponse("threshold_labeling.html", {"request": request})
+
+
+@app.get("/api/threshold_labeling/data", response_model=ThresholdLabelingDataResponse)
+def threshold_labeling_data() -> ThresholdLabelingDataResponse:
+    """Return all labeling cases merged with existing gold labels."""
+
+    cases, labeled_cases = _build_threshold_label_cases()
+    return ThresholdLabelingDataResponse(
+        status="ok",
+        error=None,
+        total_cases=len(cases),
+        labeled_cases=labeled_cases,
+        cases=cases,
+    )
+
+
+@app.post("/api/threshold_labeling/save", response_model=ThresholdLabelSaveResponse)
+def threshold_labeling_save(payload: ThresholdLabelSaveRequest) -> ThresholdLabelSaveResponse:
+    """Persist one case's should-answer and relevant-vector selection to gold CSV."""
+
+    pool_cases = _load_threshold_label_pool()
+    pool_case = next((case for case in pool_cases if case.get("case_id") == payload.case_id), None)
+    if pool_case is None:
+        raise HTTPException(status_code=404, detail=f"Unknown case_id: {payload.case_id}")
+
+    candidates = pool_case.get("candidates") or []
+    if not isinstance(candidates, list):
+        candidates = []
+    valid_vector_ids = {
+        str(candidate.get("vector_id", "")).strip()
+        for candidate in candidates
+        if isinstance(candidate, dict) and str(candidate.get("vector_id", "")).strip()
+    }
+
+    selected_vector_ids: list[str] = []
+    seen_vector_ids: set[str] = set()
+    for vector_id in payload.relevant_vector_ids:
+        clean_id = vector_id.strip()
+        if not clean_id or clean_id in seen_vector_ids:
+            continue
+        seen_vector_ids.add(clean_id)
+        selected_vector_ids.append(clean_id)
+
+    invalid_vector_ids = [vector_id for vector_id in selected_vector_ids if vector_id not in valid_vector_ids]
+    if invalid_vector_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid vector IDs for case {payload.case_id}: {invalid_vector_ids}",
+        )
+    if payload.should_answer and not selected_vector_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="should_answer=1 requires at least one selected relevant_vector_id.",
+        )
+    if (not payload.should_answer) and selected_vector_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="should_answer=0 requires relevant_vector_ids to be empty.",
+        )
+
+    gold_rows, _ = _load_threshold_gold_rows()
+    rows_by_case: dict[str, dict[str, str]] = {
+        str(row.get("case_id", "")).strip(): row for row in gold_rows if str(row.get("case_id", "")).strip()
+    }
+    ordered_case_ids: list[str] = []
+    seen_case_ids: set[str] = set()
+    for case in pool_cases:
+        case_id = str(case.get("case_id", "")).strip()
+        if case_id and case_id not in seen_case_ids:
+            ordered_case_ids.append(case_id)
+            seen_case_ids.add(case_id)
+        if case_id and case_id not in rows_by_case:
+            rows_by_case[case_id] = {
+                "case_id": case_id,
+                "should_answer": "",
+                "relevant_vector_ids": "",
+            }
+
+    rows_by_case[payload.case_id] = {
+        "case_id": payload.case_id,
+        "should_answer": "1" if payload.should_answer else "0",
+        "relevant_vector_ids": "|".join(selected_vector_ids),
+    }
+    _write_threshold_gold_rows([rows_by_case[case_id] for case_id in ordered_case_ids])
+
+    return ThresholdLabelSaveResponse(status="ok", error=None, case_id=payload.case_id)
 
 
 @app.get("/api/team_info", response_model=TeamInfoResponse)
@@ -390,7 +718,13 @@ def model_architecture() -> FileResponse:
     """Required endpoint: returns architecture diagram PNG."""
 
     if not ARCH_PATH.exists():
-        ensure_architecture_png(ARCH_PATH)
+        try:
+            ensure_architecture_png(ARCH_PATH)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"model_architecture unavailable: {type(exc).__name__}: {exc}",
+            ) from exc
     return FileResponse(path=str(ARCH_PATH), media_type="image/png", filename="model_architecture.png")
 
 
