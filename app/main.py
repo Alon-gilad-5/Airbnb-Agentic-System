@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import json
 import logging
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -51,6 +53,7 @@ from app.services.chat_service import ChatService
 from app.services.embeddings import EmbeddingService
 from app.services.pinecone_retriever import PineconeRetriever
 from app.services.gmail_service import GmailService
+from app.services.mail_push_state import get_owner_choice, get_push_state, set_owner_choice, set_push_state
 from app.services.web_review_ingest import WebReviewIngestService
 from app.services.web_review_scraper import PlaywrightReviewScraper
 
@@ -154,6 +157,9 @@ gmail_service = GmailService(
     accounts_path=settings.gmail_accounts_path,
     credentials_dir=settings.gmail_credentials_dir,
     airbnb_sender_domains=settings.mail_airbnb_sender_domains,
+    gmail_client_id=settings.gmail_client_id,
+    gmail_client_secret=settings.gmail_client_secret,
+    gmail_refresh_token=settings.gmail_refresh_token,
 )
 mail_agent = MailAgent(
     gmail_service=gmail_service,
@@ -540,6 +546,23 @@ def startup() -> None:
             )
     market_watch_scheduler.start()
 
+    # Gmail push: renew watch on startup if enabled and expiration missing or past
+    if settings.mail_push_enabled and settings.mail_push_topic and settings.mail_enabled:
+        state = get_push_state(settings.database_url)
+        now_ms = int(time.time() * 1000)
+        expiration_ts = (state or {}).get("expiration_ts") if state else None
+        if expiration_ts is None or expiration_ts <= now_ms:
+            watch_result = gmail_service.setup_watch(settings.mail_push_topic)
+            if watch_result:
+                set_push_state(
+                    settings.database_url,
+                    str(watch_result.get("historyId", "")),
+                    expiration_ts=watch_result.get("expiration"),
+                )
+                logger.info("Gmail push watch renewed on startup")
+            else:
+                logger.warning("Gmail push watch renewal failed on startup")
+
 
 @app.on_event("shutdown")
 def shutdown() -> None:
@@ -858,6 +881,35 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
 # ---------------------------------------------------------------------------
 
 
+def _notify_owner_for_mail_actions(
+    mail_actions: list[dict],
+    gmail_svc: GmailService,
+    notify_email: str | None,
+    app_base_url: str | None,
+) -> None:
+    """If any action requires_owner and notify_email is set, send a short summary email with link."""
+    if not notify_email or not mail_actions:
+        return
+    needing = [a for a in mail_actions if a.get("requires_owner")]
+    if not needing:
+        return
+    lines: list[str] = []
+    for a in needing:
+        cat = a.get("category", "unknown")
+        subject = a.get("subject", "")
+        guest = a.get("guest_name") or "Guest"
+        action = a.get("action", "")
+        if cat == "new_property_review" and a.get("rating") is not None and a.get("rating") <= 3:
+            snippet = (a.get("reason") or a.get("snippet", ""))[:200]
+            lines.append(f"Bad review: {guest}, {a.get('rating')}/5 — {snippet}")
+        else:
+            lines.append(f"[{cat}] {subject} (Guest: {guest}) — {action}")
+    body = "Mail agent: action(s) need your attention.\n\n" + "\n\n".join(lines)
+    if app_base_url:
+        body += f"\n\nOpen: {app_base_url.rstrip('/')}/mail"
+    gmail_svc.send_message(notify_email, "Mail agent: action needed", body)
+
+
 @app.get("/mail", response_class=HTMLResponse)
 def mail_ui(request: Request) -> HTMLResponse:
     """Mail agent UI for inbox triage and owner HITL decisions."""
@@ -907,9 +959,90 @@ def mail_inbox() -> MailInboxResponse:
         )
 
 
+@app.post("/api/mail/push")
+async def mail_push(
+    request: Request,
+    x_gmail_push_secret: str | None = Header(default=None, alias="X-Gmail-Push-Secret"),
+) -> dict[str, str]:
+    """Gmail push webhook: decode Pub/Sub notification, fetch new messages, run pipeline, notify owner if needed. Always returns 200."""
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            return {"status": "ok"}
+        msg = body.get("message", {})
+        if not isinstance(msg, dict):
+            return {"status": "ok"}
+        data_b64 = msg.get("data")
+        if not data_b64:
+            return {"status": "ok"}
+        secret = settings.mail_push_webhook_secret
+        if secret and secret.strip():
+            provided = x_gmail_push_secret or (request.headers.get("Authorization") or "").replace("Bearer ", "").strip()
+            if provided != secret:
+                raise HTTPException(status_code=401, detail="Invalid or missing push secret")
+        try:
+            data_bytes = base64.b64decode(data_b64)
+            data = json.loads(data_bytes.decode("utf-8"))
+        except (ValueError, json.JSONDecodeError):
+            return {"status": "ok"}
+        history_id = data.get("historyId") if isinstance(data, dict) else None
+        if not history_id:
+            return {"status": "ok"}
+        if not settings.mail_enabled or not settings.mail_push_enabled:
+            return {"status": "ok"}
+        db_url = settings.database_url
+        state = get_push_state(db_url)
+        last_history_id = state.get("history_id") if state else None
+        if not last_history_id:
+            set_push_state(db_url, str(history_id))
+            return {"status": "ok"}
+        try:
+            messages = gmail_service.list_messages_since_history(last_history_id)
+        except Exception as exc:
+            if "404" in str(exc) or "history" in str(exc).lower():
+                set_push_state(db_url, str(history_id))
+                return {"status": "ok"}
+            logger.warning("mail push: list_messages_since_history failed: %s", exc)
+            return {"status": "ok"}
+        if messages:
+            result = mail_agent.run_on_messages(messages)
+            actions = result.mail_actions or []
+            if any(a.get("requires_owner") for a in actions):
+                _notify_owner_for_mail_actions(
+                    actions,
+                    gmail_service,
+                    settings.mail_owner_notify_email,
+                    settings.app_base_url,
+                )
+        set_push_state(db_url, str(history_id))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("mail push handler error: %s", exc)
+    return {"status": "ok"}
+
+
+@app.post("/api/mail/watch")
+def mail_watch() -> dict[str, str | bool]:
+    """Register Gmail push watch when mail_push_enabled and mail_push_topic are set."""
+    if not settings.mail_push_enabled or not settings.mail_push_topic:
+        return {"status": "error", "error": "Mail push or topic not configured", "ok": False}
+    if not settings.mail_enabled:
+        return {"status": "error", "error": "Mail agent disabled", "ok": False}
+    watch_result = gmail_service.setup_watch(settings.mail_push_topic)
+    if not watch_result:
+        return {"status": "error", "error": "setup_watch failed", "ok": False}
+    set_push_state(
+        settings.database_url,
+        str(watch_result.get("historyId", "")),
+        expiration_ts=watch_result.get("expiration"),
+    )
+    return {"status": "ok", "ok": True, "historyId": watch_result.get("historyId"), "expiration": watch_result.get("expiration")}
+
+
 @app.post("/api/mail/action", response_model=MailActionResponse)
 def mail_action(payload: MailActionRequest) -> MailActionResponse:
-    """Execute an owner HITL action (rate guest, approve draft, etc.)."""
+    """Execute an owner HITL action (rate guest, approve draft, don't reply, approve and send, etc.)."""
 
     if not settings.mail_enabled:
         return MailActionResponse(
@@ -919,6 +1052,48 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
             steps=[],
         )
     try:
+        if payload.don_t_reply:
+            set_owner_choice(settings.database_url, payload.email_id, "don_t_reply")
+            return MailActionResponse(
+                status="ok",
+                error=None,
+                response="Owner chose not to reply.",
+                steps=[],
+            )
+        if payload.approve_and_send and payload.edited_draft:
+            thread_id = payload.thread_id
+            reply_to_addr = payload.reply_to
+            subject = payload.subject
+            if not thread_id or not reply_to_addr:
+                return MailActionResponse(
+                    status="error",
+                    error="approve_and_send requires thread_id and reply_to.",
+                    response=None,
+                    steps=[],
+                )
+            if not subject:
+                subject = "Re: (no subject)"
+            ok = gmail_service.send_reply(
+                thread_id=thread_id,
+                to=reply_to_addr,
+                subject=subject,
+                body=payload.edited_draft,
+                in_reply_to=payload.in_reply_to,
+                references=payload.references,
+            )
+            if not ok:
+                return MailActionResponse(
+                    status="error",
+                    error="Send failed, please try again.",
+                    response=None,
+                    steps=[],
+                )
+            return MailActionResponse(
+                status="ok",
+                error=None,
+                response="Reply sent.",
+                steps=[],
+            )
         owner_action: dict[str, object] = {
             "email_id": payload.email_id,
             "action_type": payload.action_type,
@@ -933,6 +1108,14 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
             owner_action["approved"] = payload.approved
         if payload.edited_draft is not None:
             owner_action["edited_draft"] = payload.edited_draft
+        if payload.owner_instructions is not None:
+            owner_action["owner_instructions"] = payload.owner_instructions
+        if payload.reply_style is not None:
+            owner_action["reply_style"] = payload.reply_style
+        if payload.don_t_reply is not None:
+            owner_action["don_t_reply"] = payload.don_t_reply
+        if payload.approve_and_send is not None:
+            owner_action["approve_and_send"] = payload.approve_and_send
 
         context = {
             "owner_id": settings.active_owner.owner_id,
@@ -950,6 +1133,7 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
             error=None,
             response=result.response,
             steps=result.steps,
+            mail_actions=result.mail_actions,
         )
     except Exception as exc:
         return MailActionResponse(

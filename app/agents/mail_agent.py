@@ -359,6 +359,36 @@ class MailPipeline:
         state = self._apply(state, self.build_answer.invoke(state))
         return state
 
+    def invoke_with_messages(
+        self, state: dict[str, Any], messages: list[EmailMessage]
+    ) -> dict[str, Any]:
+        """Run pipeline on a pre-fetched list of messages (e.g. from push). Skips fetch_inbox."""
+        state = dict(state)
+        state["raw_messages"] = messages
+        state = self._apply(
+            state,
+            {
+                "steps": [
+                    StepLog(
+                        module="mail_agent.push_fetch",
+                        prompt={"source": "push", "count": len(messages)},
+                        response={"status": "ok", "source": "push", "count": len(messages)},
+                    )
+                ],
+            },
+        )
+        if not messages:
+            return state
+
+        state = self._apply(state, self.filter_airbnb.invoke(state))
+        if not state.get("airbnb_messages"):
+            return state
+
+        state = self._apply(state, self.classify_emails.invoke(state))
+        state = self._apply(state, self.apply_policies.invoke(state))
+        state = self._apply(state, self.build_answer.invoke(state))
+        return state
+
     # -- stage implementations -----------------------------------------------------
 
     def _fetch_inbox_stage(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -503,13 +533,18 @@ class MailPipeline:
         self, cls_email: ClassifiedEmail
     ) -> tuple[dict[str, Any], list[StepLog]]:
         importance = _score_importance(cls_email)
+        msg = cls_email.message
 
         action: dict[str, Any] = {
-            "email_id": cls_email.message.id,
+            "email_id": msg.id,
+            "thread_id": msg.thread_id,
+            "reply_to": msg.sender,
+            "subject": msg.subject,
+            "in_reply_to": getattr(msg, "message_id_header", None) or None,
+            "references": getattr(msg, "references", None) or None,
             "category": CATEGORY_GUEST_MESSAGE,
             "importance": importance,
             "guest_name": cls_email.extracted_guest_name,
-            "subject": cls_email.message.subject,
         }
 
         if importance == IMPORTANCE_HIGH:
@@ -540,7 +575,7 @@ class MailPipeline:
 
         step = StepLog(
             module="mail_agent.guest_message_policy",
-            prompt={"email_id": cls_email.message.id, "importance": importance},
+            prompt={"email_id": msg.id, "importance": importance},
             response={"action": action["action"], "has_draft": action.get("draft") is not None},
         )
         return action, [step]
@@ -553,14 +588,19 @@ class MailPipeline:
         owner_action: dict[str, Any] | None,
     ) -> tuple[dict[str, Any], list[StepLog]]:
         guest_name = cls_email.extracted_guest_name or "Guest"
+        msg = cls_email.message
         action: dict[str, Any] = {
-            "email_id": cls_email.message.id,
+            "email_id": msg.id,
+            "thread_id": msg.thread_id,
+            "reply_to": msg.sender,
+            "subject": msg.subject,
+            "in_reply_to": getattr(msg, "message_id_header", None) or None,
+            "references": getattr(msg, "references", None) or None,
             "category": CATEGORY_LEAVE_REVIEW,
             "guest_name": guest_name,
-            "subject": cls_email.message.subject,
         }
 
-        if owner_action and owner_action.get("email_id") == cls_email.message.id:
+        if owner_action and owner_action.get("email_id") == msg.id:
             rating = owner_action.get("rating")
             if isinstance(rating, int) and 1 <= rating <= 5:
                 if rating >= 3:
@@ -585,7 +625,7 @@ class MailPipeline:
                 )
                 step = StepLog(
                     module="mail_agent.leave_review_policy",
-                    prompt={"email_id": cls_email.message.id, "guest_name": guest_name, "owner_rating": rating},
+                    prompt={"email_id": msg.id, "guest_name": guest_name, "owner_rating": rating},
                     response={
                         "action": "review_draft_ready",
                         "rating_tier": "positive" if rating >= 3 else "negative",
@@ -602,7 +642,7 @@ class MailPipeline:
         )
         step = StepLog(
             module="mail_agent.leave_review_policy",
-            prompt={"email_id": cls_email.message.id, "guest_name": guest_name},
+            prompt={"email_id": msg.id, "guest_name": guest_name},
             response={"action": "awaiting_owner_rating"},
         )
         return action, [step]
@@ -617,15 +657,34 @@ class MailPipeline:
     ) -> tuple[dict[str, Any], list[StepLog]]:
         guest_name = cls_email.extracted_guest_name or "Guest"
         rating = cls_email.extracted_rating
+        msg = cls_email.message
         action: dict[str, Any] = {
-            "email_id": cls_email.message.id,
+            "email_id": msg.id,
+            "thread_id": msg.thread_id,
+            "reply_to": msg.sender,
+            "subject": msg.subject,
+            "in_reply_to": getattr(msg, "message_id_header", None) or None,
+            "references": getattr(msg, "references", None) or None,
             "category": CATEGORY_NEW_PROPERTY_REVIEW,
             "guest_name": guest_name,
             "rating": rating,
-            "subject": cls_email.message.subject,
         }
 
         is_bad = rating is not None and rating <= cfg.bad_review_threshold
+
+        if owner_action and owner_action.get("email_id") == msg.id and owner_action.get("don_t_reply"):
+            action.update(
+                action="owner_chose_dont_reply",
+                requires_owner=False,
+                draft=None,
+                reason="Owner chose not to reply",
+            )
+            step = StepLog(
+                module="mail_agent.property_review_policy",
+                prompt={"email_id": msg.id, "don_t_reply": True},
+                response={"action": "owner_chose_dont_reply"},
+            )
+            return action, [step]
 
         if is_bad:
             action.update(
@@ -635,16 +694,31 @@ class MailPipeline:
                     f"({cfg.bad_review_threshold}). Owner must review before any response."
                 ),
                 requires_owner=True,
-                draft=None,
             )
-            if owner_action and owner_action.get("email_id") == cls_email.message.id:
-                if owner_action.get("approved"):
-                    sys_p, usr_p = _review_response_prompts(guest_name, rating, cls_email.message.body)
+            if owner_action and owner_action.get("email_id") == msg.id:
+                if owner_action.get("approved") or owner_action.get("reply_style"):
+                    owner_instructions = owner_action.get("owner_instructions") or ""
+                    sys_p, usr_p = _review_response_prompts(guest_name, rating, msg.body)
+                    if owner_instructions:
+                        usr_p += f"\n\nOwner instructions: {owner_instructions}"
                     draft = self._try_generate(sys_p, usr_p, fallback="Thank you for your feedback.")
+                    reply_style = owner_action.get("reply_style")
+                    if reply_style:
+                        opts = self._generate_review_reply_options(guest_name, rating, msg.body)
+                        for opt in opts:
+                            if opt.get("style") == reply_style:
+                                draft = opt.get("draft", draft)
+                                break
                     action.update(action="response_draft_ready", draft=draft)
+                else:
+                    reply_options = self._generate_review_reply_options(guest_name, rating, msg.body)
+                    action.update(reply_options=reply_options, draft=reply_options[0]["draft"] if reply_options else None)
+            else:
+                reply_options = self._generate_review_reply_options(guest_name, rating, msg.body)
+                action.update(reply_options=reply_options, draft=reply_options[0]["draft"] if reply_options else None)
         else:
             effective_rating = rating or 5
-            sys_p, usr_p = _review_response_prompts(guest_name, effective_rating, cls_email.message.body)
+            sys_p, usr_p = _review_response_prompts(guest_name, effective_rating, msg.body)
             draft = self._try_generate(sys_p, usr_p, fallback="Thank you for your wonderful review!")
             action.update(
                 action="response_draft_ready",
@@ -656,18 +730,42 @@ class MailPipeline:
         step = StepLog(
             module="mail_agent.property_review_policy",
             prompt={
-                "email_id": cls_email.message.id,
+                "email_id": msg.id,
                 "rating": rating,
                 "threshold": cfg.bad_review_threshold,
             },
             response={
                 "is_bad_review": is_bad,
                 "action": action["action"],
-                "requires_owner": True,
+                "requires_owner": action.get("requires_owner", True),
                 "has_draft": action.get("draft") is not None,
+                "reply_options_count": len(action.get("reply_options", [])),
             },
         )
         return action, [step]
+
+    def _generate_review_reply_options(
+        self, guest_name: str, rating: int, review_text: str
+    ) -> list[dict[str, Any]]:
+        """Generate 2-3 preset reply styles for a bad review."""
+        options: list[dict[str, Any]] = []
+        styles = [
+            ("apologetic", "Apologize sincerely and commit to improvement. Be empathetic and brief."),
+            ("neutral", "Acknowledge the feedback in a neutral, professional tone. Thank them and note you take feedback seriously."),
+            ("brief_thanks", "Very short: thank them for the feedback and that you value their input."),
+        ]
+        for style_key, instruction in styles:
+            sys_p = (
+                "You are an Airbnb host responding to a guest review. "
+                "Be professional and gracious. Keep under 60 words."
+            )
+            usr_p = (
+                f"Guest: {guest_name}, Rating: {rating}/5. Review: {review_text[:500]}...\n\n"
+                f"Reply style: {instruction}"
+            )
+            draft = self._try_generate(sys_p, usr_p, fallback="Thank you for your feedback.")
+            options.append({"style": style_key, "draft": draft})
+        return options
 
     # -- LLM helper ----------------------------------------------------------------
 
@@ -807,6 +905,26 @@ class MailAgent(Agent):
         return AgentResult(
             response=result.get("answer", NO_MAIL_RESPONSE),
             steps=result.get("steps", []),
+            mail_actions=result.get("mail_actions"),
+        )
+
+    def run_on_messages(
+        self,
+        messages: list[EmailMessage],
+        prompt: str = "Process new mail.",
+        context: dict[str, object] | None = None,
+    ) -> AgentResult:
+        """Run pipeline on a pre-fetched list of messages (e.g. from push). No fetch step."""
+        state: dict[str, Any] = {
+            "prompt": prompt,
+            "context": context or {},
+            "steps": [],
+        }
+        result = self._pipeline.invoke_with_messages(state, messages)
+        return AgentResult(
+            response=result.get("answer", NO_MAIL_RESPONSE),
+            steps=result.get("steps", []),
+            mail_actions=result.get("mail_actions"),
         )
 
     def get_inbox_summary(self) -> list[dict[str, Any]]:

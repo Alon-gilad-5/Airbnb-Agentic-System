@@ -224,11 +224,32 @@ class MailActionRequest(BaseModel):
 
     email_id: str = Field(min_length=1, description="Target email message ID")
     action_type: str = Field(
-        description="Type of action: 'rate_guest', 'approve_response', 'edit_draft'",
+        description="Type of action: 'rate_guest', 'approve_response', 'edit_draft', 'don_t_reply', etc.",
     )
     rating: int | None = Field(default=None, ge=1, le=5, description="Guest rating (1-5)")
     issues: list[str] | None = Field(default=None, description="Issue checklist items for negative reviews")
     free_text: str | None = Field(default=None, description="Free-text notes from owner")
+    owner_instructions: str | None = Field(
+        default=None,
+        description="Optional instructions for how the agent should reply (e.g. 'emphasize we fixed the cleaning')",
+    )
+    reply_style: str | None = Field(
+        default=None,
+        description="Preset reply style key when multiple options offered (e.g. 'apologetic', 'neutral', 'brief_thanks')",
+    )
+    don_t_reply: bool | None = Field(
+        default=None,
+        description="If True, owner chose not to reply to this email",
+    )
+    approve_and_send: bool | None = Field(
+        default=None,
+        description="If True with approve_response, send the reply (not just save as draft)",
+    )
+    thread_id: str | None = Field(default=None, description="For approve_and_send: Gmail thread ID")
+    reply_to: str | None = Field(default=None, description="For approve_and_send: To address for the reply")
+    subject: str | None = Field(default=None, description="For approve_and_send: Reply subject (e.g. Re: ...)")
+    in_reply_to: str | None = Field(default=None, description="For approve_and_send: In-Reply-To header")
+    references: str | None = Field(default=None, description="For approve_and_send: References header")
     approved: bool | None = Field(default=None, description="Whether owner approves the draft")
     edited_draft: str | None = Field(default=None, description="Owner-edited draft text")
 
@@ -240,3 +261,7 @@ class MailActionResponse(BaseModel):
     error: str | None
     response: str | None
     steps: list[StepLog]
+    mail_actions: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Actions from pipeline (reply_options, draft, thread_id, etc.) for UI",
+    )

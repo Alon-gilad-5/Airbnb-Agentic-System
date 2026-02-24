@@ -13,6 +13,7 @@ class AgentResult:
 
     response: str
     steps: list[StepLog]
+    mail_actions: list | None = None  # Optional; set by mail agent for push notification use
 
 
 class Agent:

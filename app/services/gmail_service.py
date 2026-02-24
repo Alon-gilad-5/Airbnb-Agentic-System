@@ -1,8 +1,9 @@
 """Gmail adapter service for email ingestion and draft management.
 
-Supports three modes:
+Supports four modes:
 - **MCP**: connects to ``mcp-server-google-workspace`` via stdio and
-  calls Gmail tools through the Model Context Protocol.
+  calls Gmail tools through the Model Context Protocol (local dev).
+- **Gmail API**: direct REST API calls with OAuth2 refresh token (Render/production).
 - **Demo**: returns sample Airbnb emails for development/testing.
 - **Disabled**: returns empty results when mail feature is off.
 """
@@ -10,6 +11,7 @@ Supports three modes:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -19,6 +21,7 @@ import threading
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +126,8 @@ class EmailMessage:
     body: str
     date: str
     labels: list[str] = field(default_factory=list)
+    message_id_header: str | None = None  # RFC Message-ID for reply threading
+    references: str | None = None  # RFC References for reply threading
 
 
 @dataclass
@@ -231,6 +236,304 @@ class _McpGmailClient:
 
 
 # ---------------------------------------------------------------------------
+# Direct Gmail API client (OAuth2 refresh token, no MCP)
+# ---------------------------------------------------------------------------
+
+
+def _decode_gmail_body(payload: dict[str, Any]) -> str:
+    """Extract and decode body text from Gmail API message payload."""
+    if not payload:
+        return ""
+    body = payload.get("body", {})
+    data = body.get("data")
+    if data:
+        try:
+            return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+    parts = payload.get("parts", [])
+    for part in parts:
+        if part.get("mimeType") == "text/plain":
+            part_data = part.get("body", {}).get("data")
+            if part_data:
+                try:
+                    return base64.urlsafe_b64decode(part_data).decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+    for part in parts:
+        if part.get("mimeType") == "text/html":
+            part_data = part.get("body", {}).get("data")
+            if part_data:
+                try:
+                    return base64.urlsafe_b64decode(part_data).decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+    return ""
+
+
+def _gmail_header(payload: dict[str, Any], name: str) -> str:
+    """Get a header value from Gmail API message payload."""
+    for h in payload.get("headers", []):
+        if h.get("name", "").lower() == name.lower():
+            return h.get("value", "")
+    return ""
+
+
+class _DirectGmailClient:
+    """Gmail v1 API client using OAuth2 refresh token (headless, no browser).
+
+    Used as fallback when MCP is not available (e.g. on Render).
+    """
+
+    def __init__(self, *, client_id: str, client_secret: str, refresh_token: str) -> None:
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._service: Any = None
+
+    def _get_service(self):  # noqa: ANN201
+        if self._service is not None:
+            return self._service
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        from googleapiclient.errors import HttpError
+
+        creds = Credentials(
+            token=None,
+            refresh_token=self._refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=self._client_id,
+            client_secret=self._client_secret,
+            scopes=["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/gmail.modify"],
+        )
+        self._service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+        return self._service
+
+    def _message_to_email(self, msg: dict[str, Any]) -> EmailMessage:
+        payload = msg.get("payload", {})
+        return EmailMessage(
+            id=msg.get("id", ""),
+            thread_id=msg.get("threadId", ""),
+            sender=_gmail_header(payload, "From"),
+            recipient=_gmail_header(payload, "To"),
+            subject=_gmail_header(payload, "Subject"),
+            snippet=(msg.get("snippet") or "")[:200],
+            body=_decode_gmail_body(payload) or (msg.get("snippet") or ""),
+            date=msg.get("internalDate", ""),
+            labels=msg.get("labelIds", []),
+            message_id_header=_gmail_header(payload, "Message-ID") or None,
+            references=_gmail_header(payload, "References") or None,
+        )
+
+    def list_unread(self, max_results: int) -> list[EmailMessage]:
+        from googleapiclient.errors import HttpError
+
+        service = self._get_service()
+        try:
+            list_result = (
+                service.users()
+                .messages()
+                .list(userId="me", q="is:unread", maxResults=max_results)
+                .execute()
+            )
+        except HttpError as exc:
+            logger.error("Gmail API list messages failed: %s", exc)
+            return []
+        message_list = list_result.get("messages", [])
+        result: list[EmailMessage] = []
+        for m in message_list:
+            mid = m.get("id")
+            if not mid:
+                continue
+            try:
+                full = (
+                    service.users()
+                    .messages()
+                    .get(userId="me", id=mid, format="full")
+                    .execute()
+                )
+                result.append(self._message_to_email(full))
+            except HttpError as exc:
+                logger.warning("Gmail API get message %s failed: %s", mid, exc)
+        return result
+
+    def get_message(self, message_id: str) -> EmailMessage | None:
+        from googleapiclient.errors import HttpError
+
+        service = self._get_service()
+        try:
+            msg = (
+                service.users()
+                .messages()
+                .get(userId="me", id=message_id, format="full")
+                .execute()
+            )
+            return self._message_to_email(msg)
+        except HttpError as exc:
+            logger.error("Gmail API get message %s failed: %s", message_id, exc)
+            return None
+
+    def create_draft(
+        self,
+        *,
+        to: str,
+        subject: str,
+        body: str,
+        thread_id: str | None = None,
+    ) -> DraftResult:
+        from googleapiclient.errors import HttpError
+
+        mime = MIMEText(body, "plain", "utf-8")
+        mime["To"] = to
+        mime["Subject"] = subject
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii").rstrip("=")
+        draft_body: dict[str, Any] = {"message": {"raw": raw}}
+        if thread_id:
+            draft_body["message"]["threadId"] = thread_id
+        try:
+            service = self._get_service()
+            draft = (
+                service.users()
+                .drafts()
+                .create(userId="me", body=draft_body)
+                .execute()
+            )
+            draft_id = draft.get("id", "")
+            return DraftResult(
+                draft_id=str(draft_id),
+                thread_id=thread_id,
+                subject=subject,
+                body=body,
+                status="created",
+            )
+        except HttpError as exc:
+            logger.error("Gmail API create draft failed: %s", exc)
+            return DraftResult(
+                draft_id="error",
+                thread_id=thread_id,
+                subject=subject,
+                body=body,
+                status=f"error: {exc}",
+            )
+
+    def list_messages_since(self, start_history_id: str) -> list[EmailMessage]:
+        """Return messages added since the given history ID. Returns empty on 404 (history too old)."""
+        from googleapiclient.errors import HttpError
+
+        service = self._get_service()
+        try:
+            result = (
+                service.users()
+                .history()
+                .list(
+                    userId="me",
+                    startHistoryId=start_history_id,
+                    historyTypes="messageAdded",
+                    maxResults=100,
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            if exc.resp and exc.resp.status == 404:
+                logger.info("Gmail history.list 404 (history too old), returning empty")
+                return []
+            logger.error("Gmail API history.list failed: %s", exc)
+            return []
+
+        message_ids: list[str] = []
+        for rec in result.get("history", []):
+            for added in rec.get("messagesAdded", []):
+                msg = added.get("message")
+                if msg and msg.get("id"):
+                    message_ids.append(msg["id"])
+
+        out: list[EmailMessage] = []
+        for mid in message_ids:
+            try:
+                full = (
+                    service.users()
+                    .messages()
+                    .get(userId="me", id=mid, format="full")
+                    .execute()
+                )
+                out.append(self._message_to_email(full))
+            except HttpError as exc:
+                logger.warning("Gmail API get message %s failed: %s", mid, exc)
+        return out
+
+    def watch(self, topic_name: str) -> dict[str, Any]:
+        """Register mailbox for push notifications. Returns {historyId, expiration} (expiration in ms)."""
+        from googleapiclient.errors import HttpError
+
+        service = self._get_service()
+        try:
+            body = {"topicName": topic_name}
+            resp = (
+                service.users()
+                .watch(userId="me", body=body)
+                .execute()
+            )
+            return {
+                "historyId": str(resp.get("historyId", "")),
+                "expiration": int(resp.get("expiration", 0)),
+            }
+        except HttpError as exc:
+            logger.error("Gmail API watch failed: %s", exc)
+            raise
+
+    def send_message(self, to: str, subject: str, body: str) -> bool:
+        """Send a plain-text email (e.g. notification to owner). Returns True on success."""
+        from googleapiclient.errors import HttpError
+
+        mime = MIMEText(body, "plain", "utf-8")
+        mime["To"] = to
+        mime["Subject"] = subject
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii").rstrip("=")
+        try:
+            service = self._get_service()
+            service.users().messages().send(
+                userId="me",
+                body={"raw": raw},
+            ).execute()
+            return True
+        except HttpError as exc:
+            logger.error("Gmail API send_message failed: %s", exc)
+            return False
+
+    def send_reply(
+        self,
+        *,
+        thread_id: str,
+        to: str,
+        subject: str,
+        body: str,
+        in_reply_to: str | None = None,
+        references: str | None = None,
+    ) -> bool:
+        """Send a reply in the same thread with In-Reply-To/References for threading."""
+        from googleapiclient.errors import HttpError
+
+        mime = MIMEText(body, "plain", "utf-8")
+        mime["To"] = to
+        mime["Subject"] = subject
+        if in_reply_to:
+            mime["In-Reply-To"] = in_reply_to
+        if references:
+            mime["References"] = references
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii").rstrip("=")
+        try:
+            service = self._get_service()
+            service.users().messages().send(
+                userId="me",
+                body={"raw": raw, "threadId": thread_id},
+            ).execute()
+            return True
+        except HttpError as exc:
+            logger.error("Gmail API send_reply failed: %s", exc)
+            return False
+
+
+# ---------------------------------------------------------------------------
 # GmailService
 # ---------------------------------------------------------------------------
 
@@ -238,11 +541,13 @@ class _McpGmailClient:
 class GmailService:
     """Adapter for Gmail email operations.
 
-    Supports three modes:
+    Supports four modes:
     - **MCP mode**: connects to ``mcp-server-google-workspace`` via the
       Model Context Protocol when ``.gauth.json`` and ``.accounts.json``
-      are present in the configured directory.
-    - **Demo mode**: returns sample Airbnb emails (default fallback).
+      are present in the configured directory (local dev).
+    - **Gmail API mode**: direct REST API with OAuth2 refresh token from
+      env vars (Render/production).
+    - **Demo mode**: returns sample Airbnb emails (tests/fallback).
     - **Disabled**: ``enabled=False`` → all methods return empty results.
     """
 
@@ -254,10 +559,14 @@ class GmailService:
         accounts_path: str | None = None,
         credentials_dir: str | None = None,
         airbnb_sender_domains: list[str] | None = None,
+        gmail_client_id: str | None = None,
+        gmail_client_secret: str | None = None,
+        gmail_refresh_token: str | None = None,
     ) -> None:
         self._enabled = enabled
         self._airbnb_domains = airbnb_sender_domains or list(AIRBNB_SENDER_DOMAINS)
         self._mcp_client: _McpGmailClient | None = None
+        self._api_client: _DirectGmailClient | None = None
         self._demo_mode = True
 
         if not enabled:
@@ -267,6 +576,7 @@ class GmailService:
         accounts = accounts_path or ".accounts.json"
         creds_dir = credentials_dir or str(Path(gauth).parent)
 
+        # 1) Try MCP first (local dev)
         if Path(gauth).exists() and Path(accounts).exists():
             try:
                 self._mcp_client = _McpGmailClient(
@@ -279,23 +589,32 @@ class GmailService:
                     logger.info("GmailService running in MCP mode")
                 else:
                     logger.warning(
-                        "Gmail MCP connection failed (%s), falling back to demo mode",
+                        "Gmail MCP connection failed (%s), trying Gmail API / demo",
                         self._mcp_client.init_error,
                     )
                     self._mcp_client = None
             except Exception as exc:
-                logger.warning("Gmail MCP init error, falling back to demo mode: %s", exc)
+                logger.warning("Gmail MCP init error, trying Gmail API / demo: %s", exc)
                 self._mcp_client = None
-        else:
-            missing = []
-            if not Path(gauth).exists():
-                missing.append(gauth)
-            if not Path(accounts).exists():
-                missing.append(accounts)
-            logger.info(
-                "Gmail MCP config files not found (%s), running in demo mode",
-                ", ".join(missing),
-            )
+
+        # 2) If MCP not active, try Gmail API (Render/production)
+        if self._demo_mode and gmail_client_id and gmail_client_secret and gmail_refresh_token:
+            try:
+                self._api_client = _DirectGmailClient(
+                    client_id=gmail_client_id.strip(),
+                    client_secret=gmail_client_secret.strip(),
+                    refresh_token=gmail_refresh_token.strip(),
+                )
+                self._api_client._get_service()
+                self._demo_mode = False
+                logger.info("GmailService running in Gmail API mode")
+            except Exception as exc:
+                logger.warning("Gmail API init error, falling back to demo mode: %s", exc)
+                self._api_client = None
+
+        # 3) Otherwise stay in demo mode
+        if self._demo_mode:
+            logger.info("GmailService running in demo mode")
 
     @property
     def is_available(self) -> bool:
@@ -311,6 +630,8 @@ class GmailService:
             return []
         if self._demo_mode:
             return self._demo_list_unread(max_results)
+        if self._api_client:
+            return self._api_list_unread(max_results)
         return self._mcp_list_unread(max_results)
 
     def get_message(self, message_id: str) -> EmailMessage | None:
@@ -319,6 +640,8 @@ class GmailService:
             return None
         if self._demo_mode:
             return self._demo_get_message(message_id)
+        if self._api_client:
+            return self._api_get_message(message_id)
         return self._mcp_get_message(message_id)
 
     def create_draft(
@@ -339,7 +662,67 @@ class GmailService:
                 body=body,
                 status="created",
             )
+        if self._api_client:
+            return self._api_create_draft(to=to, subject=subject, body=body, thread_id=thread_id)
         return self._mcp_create_draft(to=to, subject=subject, body=body, thread_id=thread_id)
+
+    def list_messages_since_history(self, start_history_id: str) -> list[EmailMessage]:
+        """Return messages added since the given history ID (Gmail API mode only)."""
+        if not self._enabled:
+            return []
+        if self._api_client:
+            return self._api_client.list_messages_since(start_history_id)
+        return []
+
+    def setup_watch(self, topic_name: str) -> dict[str, Any] | None:
+        """Register mailbox for push notifications (Gmail API mode only). Returns {historyId, expiration} or None."""
+        if not self._enabled or not self._api_client:
+            return None
+        try:
+            return self._api_client.watch(topic_name)
+        except Exception as exc:
+            logger.warning("Gmail setup_watch failed: %s", exc)
+            return None
+
+    def send_message(self, to: str, subject: str, body: str) -> bool:
+        """Send a plain-text email (e.g. notification). Demo/MCP: no-op returns True."""
+        if not self._enabled:
+            return False
+        if self._demo_mode:
+            logger.debug("Demo mode: would send message to %s", to)
+            return True
+        if self._api_client:
+            return self._api_client.send_message(to, subject, body)
+        logger.debug("MCP mode: send_message no-op")
+        return True
+
+    def send_reply(
+        self,
+        *,
+        thread_id: str,
+        to: str,
+        subject: str,
+        body: str,
+        in_reply_to: str | None = None,
+        references: str | None = None,
+    ) -> bool:
+        """Send a reply in thread. Demo: no-op returns True. MCP: no-op returns False."""
+        if not self._enabled:
+            return False
+        if self._demo_mode:
+            logger.debug("Demo mode: would send reply in thread %s", thread_id)
+            return True
+        if self._api_client:
+            return self._api_client.send_reply(
+                thread_id=thread_id,
+                to=to,
+                subject=subject,
+                body=body,
+                in_reply_to=in_reply_to,
+                references=references,
+            )
+        logger.warning("MCP mode: send_reply not available")
+        return False
 
     def is_airbnb_sender(self, sender: str) -> bool:
         """Check if sender email domain belongs to Airbnb."""
@@ -354,6 +737,26 @@ class GmailService:
         if self._mcp_client:
             self._mcp_client.close()
             self._mcp_client = None
+
+    # -- Gmail API mode implementations --------------------------------------------
+
+    def _api_list_unread(self, max_results: int) -> list[EmailMessage]:
+        assert self._api_client is not None
+        try:
+            return self._api_client.list_unread(max_results)
+        except Exception as exc:
+            logger.error("Gmail API list_unread failed: %s", exc)
+            return self._demo_list_unread(max_results)
+
+    def _api_get_message(self, message_id: str) -> EmailMessage | None:
+        assert self._api_client is not None
+        return self._api_client.get_message(message_id)
+
+    def _api_create_draft(
+        self, *, to: str, subject: str, body: str, thread_id: str | None
+    ) -> DraftResult:
+        assert self._api_client is not None
+        return self._api_client.create_draft(to=to, subject=subject, body=body, thread_id=thread_id)
 
     # -- MCP mode implementations ---------------------------------------------------
 

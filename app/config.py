@@ -90,6 +90,14 @@ class Settings:
     gmail_gauth_path: str | None
     gmail_accounts_path: str | None
     gmail_credentials_dir: str | None
+    gmail_client_id: str | None
+    gmail_client_secret: str | None
+    gmail_refresh_token: str | None
+    mail_push_enabled: bool
+    mail_push_topic: str | None
+    mail_push_webhook_secret: str | None
+    mail_owner_notify_email: str | None
+    app_base_url: str | None
     active_owner: ActiveOwnerContext
 
 
@@ -241,5 +249,13 @@ def load_settings() -> Settings:
         gmail_gauth_path=os.getenv("GMAIL_GAUTH_PATH", ".gauth.json"),
         gmail_accounts_path=os.getenv("GMAIL_ACCOUNTS_PATH", ".accounts.json"),
         gmail_credentials_dir=os.getenv("GMAIL_CREDENTIALS_DIR"),
+        gmail_client_id=os.getenv("GMAIL_CLIENT_ID"),
+        gmail_client_secret=os.getenv("GMAIL_CLIENT_SECRET"),
+        gmail_refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
+        mail_push_enabled=parse_bool(os.getenv("MAIL_PUSH_ENABLED"), False),
+        mail_push_topic=os.getenv("GMAIL_PUSH_TOPIC"),
+        mail_push_webhook_secret=os.getenv("GMAIL_PUSH_WEBHOOK_SECRET"),
+        mail_owner_notify_email=os.getenv("MAIL_OWNER_NOTIFY_EMAIL"),
+        app_base_url=os.getenv("APP_URL") or os.getenv("MAIL_APP_BASE_URL"),
         active_owner=active_owner,
     )

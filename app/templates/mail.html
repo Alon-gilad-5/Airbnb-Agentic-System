@@ -138,6 +138,9 @@
       margin-top: 8px;
       font-size: 0.9rem;
     }
+    .reply-style-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .reply-style-btn { font-size: 0.85rem; padding: 6px 12px; }
+    .dont-reply-btn { background: var(--muted); color: #fff; }
   </style>
 </head>
 <body>
@@ -183,6 +186,9 @@
     const actionResult = document.getElementById("actionResult");
     const actionSteps = document.getElementById("actionSteps");
 
+    let inboxItems = [];
+    const emailActionCache = {};
+
     const COMMON_ISSUES = [
       "Noise complaints", "Cleanliness", "Rule violations",
       "Late checkout", "Property damage", "Communication issues",
@@ -225,7 +231,9 @@
       }
     }
 
-    function renderInbox(items) {
+    function renderInbox(items, actionsByEmail) {
+      actionsByEmail = actionsByEmail || {};
+      inboxItems = items || [];
       inboxList.innerHTML = "";
       if (!items.length) {
         inboxList.innerHTML = '<p class="muted">No emails found.</p>';
@@ -238,6 +246,7 @@
         div.className = "email-item";
         div.dataset.emailId = item.email_id;
 
+        const action = actionsByEmail[item.email_id];
         let html = `
           <div class="email-header">
             <span class="email-subject">${escHtml(item.subject)}</span>
@@ -252,9 +261,9 @@
         if (item.category === "leave_review_request") {
           html += renderLeaveReviewActions(item);
         } else if (item.category === "new_property_review") {
-          html += renderPropertyReviewActions(item);
+          html += renderPropertyReviewActions(item, action);
         } else if (item.category === "guest_message") {
-          html += renderGuestMessageActions(item);
+          html += renderGuestMessageActions(item, action);
         }
 
         div.innerHTML = html;
@@ -283,19 +292,54 @@
       return html;
     }
 
-    function renderPropertyReviewActions(item) {
-      if (item.rating != null && item.rating <= 3) {
+    function renderPropertyReviewActions(item, action) {
+      const emailId = item.email_id;
+      const isBad = item.rating != null && item.rating <= 3;
+      const opts = action && action.reply_options;
+      const draft = action && action.draft;
+      const hasDraft = draft != null && draft !== "";
+
+      if (isBad && (opts || hasDraft)) {
+        let html = `<div class="email-actions" data-email-id="${emailId}">
+          <span class="badge badge-bad">Bad review — choose reply style or don't reply</span>`;
+        if (opts && opts.length) {
+          html += `<div class="reply-style-group"><span class="muted">Style:</span>`;
+          for (const opt of opts) {
+            const style = opt.style || opt.label || "option";
+            html += `<button class="reply-style-btn secondary" data-email-id="${emailId}" data-reply-style="${escHtml(style)}">${escHtml(style)}</button>`;
+          }
+          html += `</div>`;
+        }
+        html += `<div class="issues-group" style="margin-top:8px;">
+          <label class="muted">Owner instructions (optional):</label>
+          <textarea class="owner-instructions action-text" data-email-id="${emailId}" placeholder="e.g. Emphasize we fixed the cleaning">${action && action.owner_instructions ? escHtml(action.owner_instructions) : ""}</textarea>
+        </div>`;
+        if (hasDraft) {
+          html += `<div class="draft-box" data-email-id="${emailId}">
+          <strong>Draft:</strong>
+          <textarea class="draft-edit action-text" data-email-id="${emailId}" rows="4">${escHtml(draft)}</textarea>
+          </div>`;
+        }
+        html += `<div style="margin-top:8px;">
+          <button class="dont-reply-btn secondary" data-email-id="${emailId}" data-dont-reply="1">Don't reply</button>`;
+        if (hasDraft && action.thread_id && action.reply_to) {
+          html += ` <button class="approve-send-btn" data-email-id="${emailId}">Approve and send</button>`;
+        }
+        html += `</div></div>`;
+        return html;
+      }
+      if (isBad) {
         return `<div class="email-actions">
           <span class="badge badge-bad">Bad review — owner consultation required</span>
-          <button class="approve-response-btn" data-email-id="${item.email_id}">Approve Response Generation</button>
+          <button class="generate-reply-options-btn" data-email-id="${emailId}">Generate reply options</button>
         </div>`;
       }
       return `<div class="email-actions">
-        <button class="run-response-btn" data-email-id="${item.email_id}">Generate Response Draft</button>
+        <button class="run-response-btn" data-email-id="${emailId}">Generate Response Draft</button>
       </div>`;
     }
 
-    function renderGuestMessageActions(item) {
+    function renderGuestMessageActions(item, action) {
       return `<div class="email-actions">
         <button class="run-reply-btn" data-email-id="${item.email_id}">Process Message</button>
       </div>`;
@@ -338,6 +382,54 @@
         });
       });
 
+      document.querySelectorAll(".generate-reply-options-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
+        });
+      });
+
+      document.querySelectorAll(".reply-style-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const emailId = btn.dataset.emailId;
+          const replyStyle = btn.dataset.replyStyle;
+          const instructionsEl = document.querySelector(`.owner-instructions[data-email-id="${emailId}"]`);
+          const ownerInstructions = instructionsEl ? instructionsEl.value.trim() : null;
+          submitMailAction(emailId, "approve_response", { reply_style: replyStyle, owner_instructions: ownerInstructions || undefined });
+        });
+      });
+
+      document.querySelectorAll(".dont-reply-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          submitMailAction(btn.dataset.emailId, "don_t_reply", { don_t_reply: true });
+        });
+      });
+
+      document.querySelectorAll(".approve-send-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const emailId = btn.dataset.emailId;
+          const action = emailActionCache[emailId];
+          if (!action || !action.thread_id || !action.reply_to) {
+            statusEl.textContent = "Missing reply metadata; try generating options again.";
+            return;
+          }
+          const draftEl = document.querySelector(`.draft-edit[data-email-id="${emailId}"]`);
+          const draftText = draftEl ? draftEl.value.trim() : (action.draft || "");
+          if (!draftText) {
+            statusEl.textContent = "Draft is empty.";
+            return;
+          }
+          submitMailAction(emailId, "approve_response", {
+            approve_and_send: true,
+            edited_draft: draftText,
+            thread_id: action.thread_id,
+            reply_to: action.reply_to,
+            subject: action.subject || "Re: (no subject)",
+            in_reply_to: action.in_reply_to || undefined,
+            references: action.references || undefined,
+          });
+        });
+      });
+
       document.querySelectorAll(".run-response-btn").forEach(btn => {
         btn.addEventListener("click", () => {
           submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
@@ -369,6 +461,14 @@
         actionResult.textContent = data.response ?? `(error) ${data.error}`;
         renderSteps(data.steps || [], actionSteps);
         statusEl.textContent = `Action complete (${data.status})`;
+
+        if (data.mail_actions && data.mail_actions.length) {
+          const match = data.mail_actions.find(a => a.email_id === emailId);
+          if (match) {
+            emailActionCache[emailId] = match;
+            renderInbox(inboxItems, emailActionCache);
+          }
+        }
       } catch (err) {
         actionResult.textContent = String(err);
         statusEl.textContent = "Action failed";

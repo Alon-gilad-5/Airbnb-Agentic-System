@@ -26,6 +26,10 @@ from app.agents.mail_agent import (
     _score_importance,
 )
 from app.services.gmail_service import EmailMessage, GmailService
+from app.services.gmail_service import _DirectGmailClient
+from app.services.gmail_service import _decode_gmail_body
+from app.services.gmail_service import _gmail_header
+from app.services.mail_mock_emails import all_demo_mocks, get_mock_for_category
 
 # -- Dummy services -----------------------------------------------------------
 
@@ -43,10 +47,14 @@ class DummyChatService:
 
 
 def _make_gmail(enabled: bool = True) -> GmailService:
+    """GmailService in demo mode: no MCP files, no Gmail API env vars."""
     return GmailService(
         enabled=enabled,
         gauth_path="__nonexistent_test_gauth__.json",
         accounts_path="__nonexistent_test_accounts__.json",
+        gmail_client_id=None,
+        gmail_client_secret=None,
+        gmail_refresh_token=None,
     )
 
 
@@ -336,7 +344,187 @@ class TestMailAgentPolicies:
         assert len(result.response) > 0
 
 
+# -- run_on_messages (new-email / push path) with mock emails -----------------
+
+
+def _mock_raw_to_message(raw: dict[str, Any]) -> EmailMessage:
+    """Convert a mock email dict (from mail_mock_emails) to EmailMessage."""
+    return GmailService._raw_to_message(raw)
+
+
+class TestMailAgentRunOnMessages:
+    """Agent reaction when receiving new email (run_on_messages with mock emails)."""
+
+    def test_run_on_messages_uses_push_fetch_step(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("guest_message")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        module_names = {s.module for s in result.steps}
+        assert "mail_agent.push_fetch" in module_names
+        assert "mail_agent.fetch_inbox" not in module_names
+
+    def test_run_on_messages_guest_message_high(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("guest_message", "high")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        assert result.mail_actions is not None
+        assert len(result.mail_actions) >= 1
+        action = next(a for a in result.mail_actions if a.get("email_id") == raw["id"])
+        assert action["category"] == CATEGORY_GUEST_MESSAGE
+        assert action.get("action") == "owner_heads_up"
+        assert action.get("requires_owner") is True
+
+    def test_run_on_messages_guest_message_low(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("guest_message", "low")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        assert result.mail_actions is not None
+        action = next(a for a in result.mail_actions if a.get("email_id") == raw["id"])
+        assert action["category"] == CATEGORY_GUEST_MESSAGE
+        assert action.get("action") in ("draft_reply", "owner_consult")
+        assert action.get("requires_owner") is True
+        if action.get("action") == "draft_reply":
+            assert action.get("draft")
+
+    def test_run_on_messages_leave_review_request(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("leave_review_request")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        assert result.mail_actions is not None
+        action = next(a for a in result.mail_actions if a.get("email_id") == raw["id"])
+        assert action["category"] == CATEGORY_LEAVE_REVIEW
+        assert action.get("action") == "awaiting_owner_rating"
+        assert action.get("requires_owner") is True
+
+    def test_run_on_messages_new_property_review_bad(self) -> None:
+        agent = _make_agent(bad_review_threshold=3)
+        raw = get_mock_for_category("new_property_review", "bad")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        assert result.mail_actions is not None
+        action = next(a for a in result.mail_actions if a.get("email_id") == raw["id"])
+        assert action["category"] == CATEGORY_NEW_PROPERTY_REVIEW
+        assert action.get("requires_owner") is True
+        assert "reply_options" in action
+        assert isinstance(action["reply_options"], list)
+        assert len(action["reply_options"]) >= 1
+        assert action.get("draft")
+
+    def test_run_on_messages_new_property_review_good(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("new_property_review", "good")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        assert result.mail_actions is not None
+        action = next(a for a in result.mail_actions if a.get("email_id") == raw["id"])
+        assert action["category"] == CATEGORY_NEW_PROPERTY_REVIEW
+        assert action.get("draft")
+        assert action.get("action") != "owner_chose_dont_reply"
+
+    def test_run_on_messages_unsupported_airbnb(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("unsupported_airbnb")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        assert result.mail_actions is not None
+        action = next(a for a in result.mail_actions if a.get("email_id") == raw["id"])
+        assert action["category"] == CATEGORY_UNSUPPORTED_AIRBNB
+        assert action.get("action") == "no_action"
+        assert action.get("requires_owner") is False
+
+    def test_run_on_messages_non_airbnb_excluded(self) -> None:
+        agent = _make_agent()
+        raw = get_mock_for_category("non_airbnb")
+        messages = [_mock_raw_to_message(raw)]
+        result = agent.run_on_messages(messages)
+        # When only non-Airbnb is passed, filter excludes it so mail_actions may be None or empty
+        if result.mail_actions is None:
+            assert result.response
+            return
+        assert not any(a.get("email_id") == raw["id"] for a in result.mail_actions)
+
+    def test_run_on_messages_all_demo_mocks(self) -> None:
+        agent = _make_agent()
+        raws = all_demo_mocks()
+        messages = [_mock_raw_to_message(r) for r in raws]
+        result = agent.run_on_messages(messages)
+        assert result.response
+        assert result.mail_actions is not None
+        categories = {a.get("category") for a in result.mail_actions}
+        assert CATEGORY_GUEST_MESSAGE in categories
+        assert CATEGORY_LEAVE_REVIEW in categories
+        assert CATEGORY_NEW_PROPERTY_REVIEW in categories
+        assert CATEGORY_NON_AIRBNB not in categories
+        assert len(result.mail_actions) >= 4
+
+
 # -- Router integration --------------------------------------------------------
+
+
+class TestDirectGmailClientParsing:
+    """Unit tests for Gmail API response parsing (no live API calls)."""
+
+    def test_gmail_header_extracts_from_payload(self) -> None:
+        payload = {
+            "headers": [
+                {"name": "From", "value": "no-reply@airbnb.com"},
+                {"name": "To", "value": "owner@example.com"},
+                {"name": "Subject", "value": "New message"},
+            ]
+        }
+        assert _gmail_header(payload, "From") == "no-reply@airbnb.com"
+        assert _gmail_header(payload, "To") == "owner@example.com"
+        assert _gmail_header(payload, "Subject") == "New message"
+        assert _gmail_header(payload, "Date") == ""
+
+    def test_decode_gmail_body_simple(self) -> None:
+        import base64
+
+        text = "Hello, this is the body."
+        payload = {"body": {"data": base64.urlsafe_b64encode(text.encode()).decode()}}
+        assert _decode_gmail_body(payload) == text
+
+    def test_decode_gmail_body_empty(self) -> None:
+        assert _decode_gmail_body({}) == ""
+        assert _decode_gmail_body({"body": {}}) == ""
+
+    def test_direct_client_message_to_email(self) -> None:
+        import base64
+
+        body_b64 = base64.urlsafe_b64encode(b"Email body here.").decode()
+        msg = {
+            "id": "msg-123",
+            "threadId": "thread-456",
+            "snippet": "Short snippet...",
+            "internalDate": "1609459200000",
+            "labelIds": ["INBOX", "UNREAD"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "sender@airbnb.com"},
+                    {"name": "To", "value": "me@example.com"},
+                    {"name": "Subject", "value": "Test Subject"},
+                ],
+                "body": {"data": body_b64},
+            },
+        }
+        client = _DirectGmailClient(
+            client_id="fake-id",
+            client_secret="fake-secret",
+            refresh_token="fake-token",
+        )
+        email = client._message_to_email(msg)
+        assert email.id == "msg-123"
+        assert email.thread_id == "thread-456"
+        assert email.sender == "sender@airbnb.com"
+        assert email.recipient == "me@example.com"
+        assert email.subject == "Test Subject"
+        assert email.body == "Email body here."
+        assert email.snippet == "Short snippet..."
+        assert "INBOX" in email.labels
 
 
 class TestRouterMailKeywords:
