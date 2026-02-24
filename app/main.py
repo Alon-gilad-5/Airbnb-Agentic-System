@@ -919,7 +919,7 @@ def mail_ui(request: Request) -> HTMLResponse:
 
 @app.get("/api/mail/inbox", response_model=MailInboxResponse)
 def mail_inbox() -> MailInboxResponse:
-    """Return classified inbox items for the mail agent UI."""
+    """Return classified inbox items AND agent-processed actions for the mail agent UI."""
 
     if not settings.mail_enabled:
         return MailInboxResponse(
@@ -944,11 +944,30 @@ def mail_inbox() -> MailInboxResponse:
             )
             for item in items_raw
         ]
+
+        mail_actions: list[dict] | None = None
+        try:
+            messages = mail_agent.gmail_service.list_unread_messages(
+                max_results=mail_agent.config.max_inbox_fetch,
+            )
+            if messages:
+                context = {
+                    "owner_id": settings.active_owner.owner_id,
+                    "owner_name": settings.active_owner.owner_name,
+                    "property_id": settings.active_owner.property_id,
+                    "property_name": settings.active_owner.property_name,
+                }
+                result = mail_agent.run_on_messages(messages, context=context)
+                mail_actions = result.mail_actions
+        except Exception as proc_exc:
+            logger.warning("mail inbox auto-process failed: %s", proc_exc)
+
         return MailInboxResponse(
             status="ok",
             error=None,
             items=items,
             demo_mode=gmail_service.is_demo_mode,
+            mail_actions=mail_actions,
         )
     except Exception as exc:
         return MailInboxResponse(

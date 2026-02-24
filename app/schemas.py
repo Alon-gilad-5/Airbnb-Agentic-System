@@ -217,6 +217,7 @@ class MailInboxResponse(BaseModel):
     error: str | None
     items: list[MailInboxItemResponse]
     demo_mode: bool
+    mail_actions: list[dict[str, Any]] | None = None
 
 
 class MailActionRequest(BaseModel):

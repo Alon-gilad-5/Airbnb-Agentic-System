@@ -141,6 +141,23 @@
     .reply-style-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
     .reply-style-btn { font-size: 0.85rem; padding: 6px 12px; }
     .dont-reply-btn { background: var(--muted); color: #fff; }
+    .action-banner {
+      margin-top: 8px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .banner-urgent { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .banner-owner { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .banner-auto { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .banner-info { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .agent-summary {
+      margin-top: 6px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -231,6 +248,53 @@
       }
     }
 
+    function renderAgentBanner(action) {
+      if (!action) return "";
+      const reqOwner = action.requires_owner;
+      const emailAction = action.action || "";
+      const importance = action.importance || "";
+      const category = action.category || "";
+      const draft = action.draft || "";
+      const reason = action.reason || "";
+
+      let bannerClass = "banner-info";
+      let bannerText = "";
+
+      if (importance === "high" || (category === "new_property_review" && action.rating != null && action.rating <= 2)) {
+        bannerClass = "banner-urgent";
+        bannerText = "Urgent — requires immediate attention";
+      } else if (reqOwner) {
+        bannerClass = "banner-owner";
+        bannerText = "Owner action needed";
+      } else if (emailAction === "draft_reply" || emailAction === "auto_thank") {
+        bannerClass = "banner-auto";
+        bannerText = "Agent handled automatically";
+      } else if (emailAction === "no_action") {
+        bannerClass = "banner-info";
+        bannerText = "No action required";
+      } else {
+        bannerClass = "banner-info";
+        bannerText = `Agent decision: ${emailAction.replace(/_/g, " ")}`;
+      }
+
+      let html = `<div class="action-banner ${bannerClass}">${escHtml(bannerText)}</div>`;
+
+      let details = [];
+      if (emailAction) details.push(`Action: ${emailAction.replace(/_/g, " ")}`);
+      if (importance) details.push(`Importance: ${importance}`);
+      if (reason) details.push(`Reason: ${reason}`);
+      if (details.length) {
+        html += `<div class="agent-summary">${escHtml(details.join(" · "))}</div>`;
+      }
+
+      if (draft) {
+        const preview = draft.length > 200 ? draft.substring(0, 200) + "..." : draft;
+        html += `<div class="draft-box"><strong>Draft reply:</strong><br>${escHtml(preview)}</div>`;
+      }
+
+      return html;
+    }
+
     function renderInbox(items, actionsByEmail) {
       actionsByEmail = actionsByEmail || {};
       inboxItems = items || [];
@@ -257,6 +321,8 @@
             ${item.guest_name ? " &middot; Guest: " + escHtml(item.guest_name) : ""}
           </div>
           <div class="email-snippet">${escHtml(item.snippet)}</div>`;
+
+        html += renderAgentBanner(action);
 
         if (item.category === "leave_review_request") {
           html += renderLeaveReviewActions(item);
@@ -477,7 +543,7 @@
 
     refreshBtn.addEventListener("click", async () => {
       refreshBtn.disabled = true;
-      statusEl.textContent = "Loading inbox...";
+      statusEl.textContent = "Loading & processing inbox...";
 
       try {
         const res = await fetch("/api/mail/inbox");
@@ -485,8 +551,15 @@
         if (data.demo_mode) demoTag.style.display = "inline-block";
         else demoTag.style.display = "none";
         if (data.status === "ok") {
-          renderInbox(data.items || []);
-          statusEl.textContent = `Loaded ${(data.items || []).length} email(s)`;
+          const actions = data.mail_actions || [];
+          for (const act of actions) {
+            if (act.email_id) emailActionCache[act.email_id] = act;
+          }
+          renderInbox(data.items || [], emailActionCache);
+          const needsOwner = actions.filter(a => a.requires_owner).length;
+          let statusMsg = `Loaded ${(data.items || []).length} email(s), processed ${actions.length} action(s)`;
+          if (needsOwner) statusMsg += ` — ${needsOwner} need your attention`;
+          statusEl.textContent = statusMsg;
         } else {
           inboxList.innerHTML = `<p style="color:var(--danger)">${data.error}</p>`;
           statusEl.textContent = "Error";
