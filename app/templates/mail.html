@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mail Agent Console</title>
+  <style>
+    :root {
+      --bg: #eef3f7;
+      --panel: #ffffff;
+      --ink: #1f2f39;
+      --muted: #617482;
+      --accent: #0f766e;
+      --accent2: #1f5f8b;
+      --border: #d6e0e8;
+      --warn: #b45309;
+      --danger: #dc2626;
+      --success: #16a34a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(145deg, #e8eff4, #f7fbfd);
+      color: var(--ink);
+      padding: 24px;
+    }
+    .layout { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    h1 { margin: 0 0 6px 0; font-size: 1.5rem; }
+    h2 { margin: 0 0 10px; }
+    p { margin: 0; color: var(--muted); }
+    .nav { display: flex; gap: 12px; margin-bottom: 4px; }
+    .nav a {
+      color: var(--accent2);
+      text-decoration: none;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .nav a:hover { background: var(--bg); }
+    button {
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    button.secondary {
+      background: var(--bg);
+      color: var(--ink);
+      border: 1px solid var(--border);
+    }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .badge-guest { background: #dbeafe; color: #1e40af; }
+    .badge-leave { background: #fef3c7; color: #92400e; }
+    .badge-review { background: #fce7f3; color: #9d174d; }
+    .badge-unsupported { background: #f3f4f6; color: #6b7280; }
+    .badge-non-airbnb { background: #e5e7eb; color: #9ca3af; }
+    .badge-bad { background: #fee2e2; color: var(--danger); }
+    .badge-good { background: #dcfce7; color: var(--success); }
+    .badge-demo { background: #fef3c7; color: var(--warn); }
+    .email-list { display: grid; gap: 12px; }
+    .email-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fcfeff;
+      transition: box-shadow 0.15s;
+    }
+    .email-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .email-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .email-subject { font-weight: 600; font-size: 1rem; }
+    .email-meta { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    .email-snippet { margin-top: 6px; font-size: 0.9rem; color: var(--ink); }
+    .email-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .rating-group { display: flex; gap: 4px; }
+    .rating-btn {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .rating-btn.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .issues-group { margin-top: 8px; }
+    .issues-group label { display: block; margin: 4px 0; font-size: 0.9rem; }
+    textarea.action-text {
+      width: 100%;
+      min-height: 60px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      font: inherit;
+      resize: vertical;
+      margin-top: 6px;
+    }
+    pre {
+      background: #f8fbfe;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 8px 0 0;
+    }
+    .steps { display: grid; gap: 10px; }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fcfeff;
+    }
+    .step h3 { margin: 0 0 6px 0; font-size: 1rem; }
+    .draft-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <section class="card">
+      <div class="nav">
+        <a href="/">Reviews Console</a>
+        <a href="/mail">Mail Console</a>
+      </div>
+      <h1>Mail Agent Console</h1>
+      <p>Triage Airbnb inbox emails, review drafts, and submit owner decisions.</p>
+    </section>
+
+    <section class="card">
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button id="refreshBtn">Refresh Inbox</button>
+        <span id="status" class="muted">Idle</span>
+        <span id="demoTag" class="badge badge-demo" style="display:none;">Demo Mode</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Inbox</h2>
+      <div id="inboxList" class="email-list">
+        <p class="muted">Click "Refresh Inbox" to load emails.</p>
+      </div>
+    </section>
+
+    <section class="card" id="resultSection" style="display:none;">
+      <h2>Action Result</h2>
+      <pre id="actionResult"></pre>
+      <h3 style="margin-top:12px;">Steps</h3>
+      <div id="actionSteps" class="steps"></div>
+    </section>
+  </main>
+
+  <script>
+    const refreshBtn = document.getElementById("refreshBtn");
+    const statusEl = document.getElementById("status");
+    const demoTag = document.getElementById("demoTag");
+    const inboxList = document.getElementById("inboxList");
+    const resultSection = document.getElementById("resultSection");
+    const actionResult = document.getElementById("actionResult");
+    const actionSteps = document.getElementById("actionSteps");
+
+    const COMMON_ISSUES = [
+      "Noise complaints", "Cleanliness", "Rule violations",
+      "Late checkout", "Property damage", "Communication issues",
+    ];
+
+    function categoryBadge(cat) {
+      const map = {
+        guest_message: "badge-guest",
+        leave_review_request: "badge-leave",
+        new_property_review: "badge-review",
+        unsupported_airbnb: "badge-unsupported",
+        non_airbnb: "badge-non-airbnb",
+      };
+      const cls = map[cat] || "badge-unsupported";
+      return `<span class="badge ${cls}">${cat.replace(/_/g, " ")}</span>`;
+    }
+
+    function ratingBadge(rating) {
+      if (rating == null) return "";
+      const cls = rating <= 3 ? "badge-bad" : "badge-good";
+      return `<span class="badge ${cls}">${rating}/5</span>`;
+    }
+
+    function renderSteps(steps, container) {
+      container.innerHTML = "";
+      if (!steps || !steps.length) {
+        container.textContent = "No steps recorded.";
+        return;
+      }
+      for (const step of steps) {
+        const div = document.createElement("div");
+        div.className = "step";
+        div.innerHTML = `
+          <h3>${step.module}</h3>
+          <strong>prompt</strong>
+          <pre>${JSON.stringify(step.prompt, null, 2)}</pre>
+          <strong>response</strong>
+          <pre>${JSON.stringify(step.response, null, 2)}</pre>`;
+        container.appendChild(div);
+      }
+    }
+
+    function renderInbox(items) {
+      inboxList.innerHTML = "";
+      if (!items.length) {
+        inboxList.innerHTML = '<p class="muted">No emails found.</p>';
+        return;
+      }
+      for (const item of items) {
+        if (item.category === "non_airbnb") continue;
+
+        const div = document.createElement("div");
+        div.className = "email-item";
+        div.dataset.emailId = item.email_id;
+
+        let html = `
+          <div class="email-header">
+            <span class="email-subject">${escHtml(item.subject)}</span>
+            <span>${categoryBadge(item.category)} ${ratingBadge(item.rating)}</span>
+          </div>
+          <div class="email-meta">
+            From: ${escHtml(item.sender)} &middot; ${escHtml(item.date)}
+            ${item.guest_name ? " &middot; Guest: " + escHtml(item.guest_name) : ""}
+          </div>
+          <div class="email-snippet">${escHtml(item.snippet)}</div>`;
+
+        if (item.category === "leave_review_request") {
+          html += renderLeaveReviewActions(item);
+        } else if (item.category === "new_property_review") {
+          html += renderPropertyReviewActions(item);
+        } else if (item.category === "guest_message") {
+          html += renderGuestMessageActions(item);
+        }
+
+        div.innerHTML = html;
+        inboxList.appendChild(div);
+      }
+
+      bindActionHandlers();
+    }
+
+    function renderLeaveReviewActions(item) {
+      let html = `<div class="email-actions">
+        <span class="muted">Rate this guest:</span>
+        <div class="rating-group" data-email-id="${item.email_id}">`;
+      for (let i = 1; i <= 5; i++) {
+        html += `<button class="rating-btn" data-rating="${i}">${i}</button>`;
+      }
+      html += `</div></div>
+        <div class="issues-group" data-email-id="${item.email_id}" style="display:none;">
+          <strong>Issues (for rating &lt; 3):</strong>`;
+      for (const issue of COMMON_ISSUES) {
+        html += `<label><input type="checkbox" value="${issue}"> ${issue}</label>`;
+      }
+      html += `<textarea class="action-text" placeholder="Additional notes..."></textarea>
+          <button class="submit-review-btn" data-email-id="${item.email_id}">Generate Review Draft</button>
+        </div>`;
+      return html;
+    }
+
+    function renderPropertyReviewActions(item) {
+      if (item.rating != null && item.rating <= 3) {
+        return `<div class="email-actions">
+          <span class="badge badge-bad">Bad review — owner consultation required</span>
+          <button class="approve-response-btn" data-email-id="${item.email_id}">Approve Response Generation</button>
+        </div>`;
+      }
+      return `<div class="email-actions">
+        <button class="run-response-btn" data-email-id="${item.email_id}">Generate Response Draft</button>
+      </div>`;
+    }
+
+    function renderGuestMessageActions(item) {
+      return `<div class="email-actions">
+        <button class="run-reply-btn" data-email-id="${item.email_id}">Process Message</button>
+      </div>`;
+    }
+
+    function bindActionHandlers() {
+      document.querySelectorAll(".rating-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const group = btn.closest(".rating-group");
+          group.querySelectorAll(".rating-btn").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          const emailId = group.dataset.emailId;
+          const rating = parseInt(btn.dataset.rating);
+          const issuesDiv = document.querySelector(`.issues-group[data-email-id="${emailId}"]`);
+          if (rating < 3) {
+            issuesDiv.style.display = "block";
+          } else {
+            issuesDiv.style.display = "none";
+            submitMailAction(emailId, "rate_guest", { rating });
+          }
+        });
+      });
+
+      document.querySelectorAll(".submit-review-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const emailId = btn.dataset.emailId;
+          const group = document.querySelector(`.rating-group[data-email-id="${emailId}"]`);
+          const selected = group.querySelector(".rating-btn.selected");
+          const rating = selected ? parseInt(selected.dataset.rating) : 1;
+          const issuesDiv = document.querySelector(`.issues-group[data-email-id="${emailId}"]`);
+          const issues = Array.from(issuesDiv.querySelectorAll("input:checked")).map(cb => cb.value);
+          const freeText = issuesDiv.querySelector("textarea").value.trim() || null;
+          submitMailAction(emailId, "rate_guest", { rating, issues, free_text: freeText });
+        });
+      });
+
+      document.querySelectorAll(".approve-response-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
+        });
+      });
+
+      document.querySelectorAll(".run-response-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
+        });
+      });
+
+      document.querySelectorAll(".run-reply-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
+        });
+      });
+    }
+
+    async function submitMailAction(emailId, actionType, extra) {
+      statusEl.textContent = "Processing...";
+      resultSection.style.display = "block";
+      actionResult.textContent = "Working...";
+      actionSteps.innerHTML = "";
+
+      const body = { email_id: emailId, action_type: actionType, ...extra };
+
+      try {
+        const res = await fetch("/api/mail/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        actionResult.textContent = data.response ?? `(error) ${data.error}`;
+        renderSteps(data.steps || [], actionSteps);
+        statusEl.textContent = `Action complete (${data.status})`;
+      } catch (err) {
+        actionResult.textContent = String(err);
+        statusEl.textContent = "Action failed";
+      }
+    }
+
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      statusEl.textContent = "Loading inbox...";
+
+      try {
+        const res = await fetch("/api/mail/inbox");
+        const data = await res.json();
+        if (data.demo_mode) demoTag.style.display = "inline-block";
+        else demoTag.style.display = "none";
+        if (data.status === "ok") {
+          renderInbox(data.items || []);
+          statusEl.textContent = `Loaded ${(data.items || []).length} email(s)`;
+        } else {
+          inboxList.innerHTML = `<p style="color:var(--danger)">${data.error}</p>`;
+          statusEl.textContent = "Error";
+        }
+      } catch (err) {
+        inboxList.innerHTML = `<p style="color:var(--danger)">${err}</p>`;
+        statusEl.textContent = "Failed";
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    });
+
+    function escHtml(str) {
+      const d = document.createElement("div");
+      d.textContent = str || "";
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>

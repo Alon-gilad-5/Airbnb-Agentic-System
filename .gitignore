@@ -1,6 +1,10 @@
-﻿# Secrets
+# Secrets
 .env
 .env.*
+credentials.json
+.gauth.json
+.accounts.json
+.oauth2.*.json
 
 # Python cache/build
 __pycache__/
@@ -25,11 +29,15 @@ eda_output/
 airbnb_reviews/
 project_guidelines/
 
-# OS/editor
+# IDE / editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+.cursor/
+
+# Local listing data
+airbnb_listing_data/
 
 # Logs
 *.log

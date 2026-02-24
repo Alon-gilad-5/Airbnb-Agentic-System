@@ -52,6 +52,20 @@ class Settings:
     scraping_allowlist: list[str]
     scraping_default_max_reviews: int
     scraping_timeout_seconds: int
+    scraping_require_source_selectors: bool
+    scraping_min_review_chars: int
+    scraping_min_token_count: int
+    scraping_reject_private_use_ratio: float
+    scraping_min_lexical_relevance_for_upsert: float
+    reviews_relevance_score_threshold: float
+    scraping_navigation_click_timeout_ms: int | None
+    scraping_gmaps_locale: str
+    scraping_gmaps_viewport_width: int
+    scraping_gmaps_viewport_height: int
+    scraping_gmaps_scroll_passes: int
+    scraping_gmaps_scroll_pause_ms: int
+    scraping_gmaps_nav_timeout_ms: int | None
+    scraping_gmaps_user_agents: list[str]
     scraping_quarantine_upsert_enabled: bool
     scraping_quarantine_namespace: str
     ticketmaster_api_key: str | None
@@ -68,6 +82,14 @@ class Settings:
     market_watch_storm_wind_kph_threshold: float
     market_watch_heavy_rain_mm_threshold: float
     market_watch_snow_cm_threshold: float
+    mail_enabled: bool
+    mail_bad_review_threshold: int
+    mail_auto_send_enabled: bool
+    mail_max_inbox_fetch: int
+    mail_airbnb_sender_domains: list[str]
+    gmail_gauth_path: str | None
+    gmail_accounts_path: str | None
+    gmail_credentials_dir: str | None
     active_owner: ActiveOwnerContext
 
 
@@ -90,6 +112,8 @@ def load_settings() -> Settings:
 
     allowlist_raw = os.getenv("SCRAPING_ALLOWLIST", "google_maps,tripadvisor")
     allowlist = [x.strip().lower() for x in allowlist_raw.split(",") if x.strip()]
+    gmaps_user_agents_raw = os.getenv("SCRAPING_GMAPS_USER_AGENTS", "")
+    gmaps_user_agents = [x.strip() for x in gmaps_user_agents_raw.split(",") if x.strip()]
     active_owner = ActiveOwnerContext(
         owner_id=os.getenv("ACTIVE_OWNER_ID"),
         owner_name=os.getenv("ACTIVE_OWNER_NAME"),
@@ -142,6 +166,37 @@ def load_settings() -> Settings:
         scraping_allowlist=allowlist,
         scraping_default_max_reviews=int(os.getenv("SCRAPING_DEFAULT_MAX_REVIEWS", "5")),
         scraping_timeout_seconds=int(os.getenv("SCRAPING_TIMEOUT_SECONDS", "45")),
+        scraping_require_source_selectors=parse_bool(
+            os.getenv("SCRAPING_REQUIRE_SOURCE_SELECTORS"),
+            True,
+        ),
+        scraping_min_review_chars=int(os.getenv("SCRAPING_MIN_REVIEW_CHARS", "40")),
+        scraping_min_token_count=int(os.getenv("SCRAPING_MIN_TOKEN_COUNT", "8")),
+        scraping_reject_private_use_ratio=float(
+            os.getenv("SCRAPING_REJECT_PRIVATE_USE_RATIO", "0.10")
+        ),
+        scraping_min_lexical_relevance_for_upsert=float(
+            os.getenv("SCRAPING_MIN_LEXICAL_RELEVANCE_FOR_UPSERT", "0.15")
+        ),
+        reviews_relevance_score_threshold=float(
+            os.getenv("REVIEWS_RELEVANCE_SCORE_THRESHOLD", "0.40")
+        ),
+        scraping_navigation_click_timeout_ms=(
+            int(nav_timeout_raw)
+            if (nav_timeout_raw := os.getenv("SCRAPING_NAVIGATION_CLICK_TIMEOUT_MS"))
+            else None
+        ),
+        scraping_gmaps_locale=os.getenv("SCRAPING_GMAPS_LOCALE", "en-US"),
+        scraping_gmaps_viewport_width=int(os.getenv("SCRAPING_GMAPS_VIEWPORT_WIDTH", "1280")),
+        scraping_gmaps_viewport_height=int(os.getenv("SCRAPING_GMAPS_VIEWPORT_HEIGHT", "900")),
+        scraping_gmaps_scroll_passes=int(os.getenv("SCRAPING_GMAPS_SCROLL_PASSES", "3")),
+        scraping_gmaps_scroll_pause_ms=int(os.getenv("SCRAPING_GMAPS_SCROLL_PAUSE_MS", "900")),
+        scraping_gmaps_nav_timeout_ms=(
+            int(gmaps_nav_timeout_raw)
+            if (gmaps_nav_timeout_raw := os.getenv("SCRAPING_GMAPS_NAV_TIMEOUT_MS"))
+            else None
+        ),
+        scraping_gmaps_user_agents=gmaps_user_agents,
         scraping_quarantine_upsert_enabled=parse_bool(
             os.getenv("SCRAPING_QUARANTINE_UPSERT_ENABLED"),
             True,
@@ -174,5 +229,17 @@ def load_settings() -> Settings:
             os.getenv("MARKET_WATCH_HEAVY_RAIN_MM_THRESHOLD", "20")
         ),
         market_watch_snow_cm_threshold=float(os.getenv("MARKET_WATCH_SNOW_CM_THRESHOLD", "4")),
+        mail_enabled=parse_bool(os.getenv("MAIL_ENABLED"), True),
+        mail_bad_review_threshold=int(os.getenv("MAIL_BAD_REVIEW_THRESHOLD", "3")),
+        mail_auto_send_enabled=parse_bool(os.getenv("MAIL_AUTO_SEND_ENABLED"), False),
+        mail_max_inbox_fetch=int(os.getenv("MAIL_MAX_INBOX_FETCH", "20")),
+        mail_airbnb_sender_domains=[
+            d.strip().lower()
+            for d in os.getenv("MAIL_AIRBNB_SENDER_DOMAINS", "airbnb.com,airbnbmail.com,airbnb.co").split(",")
+            if d.strip()
+        ],
+        gmail_gauth_path=os.getenv("GMAIL_GAUTH_PATH", ".gauth.json"),
+        gmail_accounts_path=os.getenv("GMAIL_ACCOUNTS_PATH", ".accounts.json"),
+        gmail_credentials_dir=os.getenv("GMAIL_CREDENTIALS_DIR"),
         active_owner=active_owner,
     )

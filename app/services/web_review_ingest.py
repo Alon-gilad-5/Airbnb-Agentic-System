@@ -11,6 +11,7 @@ from typing import Any
 from pinecone import Pinecone
 
 from app.services.embeddings import EmbeddingService
+from app.services.region_utils import canonicalize_region
 from app.services.web_review_scraper import ScrapedReview
 
 
@@ -71,7 +72,7 @@ class WebReviewIngestService:
         property_id = self._context_str(context, "property_id") or "unknown"
         property_name = self._context_str(context, "property_name") or "unknown"
         city = self._context_str(context, "city") or "unknown"
-        region = (self._context_str(context, "region") or "unknown").lower()
+        region = canonicalize_region(self._context_str(context, "region"))
         scraped_at_utc = datetime.now(timezone.utc).isoformat()
 
         for review, emb in zip(reviews, embeddings):

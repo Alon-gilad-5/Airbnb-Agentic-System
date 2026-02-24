@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from app.agents.base import Agent
+from app.agents.mail_agent import MailAgent, MailAgentConfig
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.router_agent import RouterAgent
@@ -27,6 +28,10 @@ from app.schemas import (
     AgentPromptTemplate,
     ExecuteRequest,
     ExecuteResponse,
+    MailActionRequest,
+    MailActionResponse,
+    MailInboxItemResponse,
+    MailInboxResponse,
     MarketAlertResponse,
     MarketWatchAlertsResponse,
     MarketWatchRunResponse,
@@ -45,6 +50,7 @@ from app.services.market_watch_scheduler import MarketWatchScheduler
 from app.services.chat_service import ChatService
 from app.services.embeddings import EmbeddingService
 from app.services.pinecone_retriever import PineconeRetriever
+from app.services.gmail_service import GmailService
 from app.services.web_review_ingest import WebReviewIngestService
 from app.services.web_review_scraper import PlaywrightReviewScraper
 
@@ -142,6 +148,23 @@ market_watch_agent = MarketWatchAgent(
     ),
 )
 
+gmail_service = GmailService(
+    enabled=settings.mail_enabled,
+    gauth_path=settings.gmail_gauth_path,
+    accounts_path=settings.gmail_accounts_path,
+    credentials_dir=settings.gmail_credentials_dir,
+    airbnb_sender_domains=settings.mail_airbnb_sender_domains,
+)
+mail_agent = MailAgent(
+    gmail_service=gmail_service,
+    chat_service=chat_service,
+    config=MailAgentConfig(
+        bad_review_threshold=settings.mail_bad_review_threshold,
+        max_inbox_fetch=settings.mail_max_inbox_fetch,
+        auto_send_enabled=settings.mail_auto_send_enabled,
+    ),
+)
+
 router_agent = RouterAgent()
 agent_registry: dict[str, Agent] = {
     "reviews_agent": ReviewsAgent(
@@ -157,6 +180,7 @@ agent_registry: dict[str, Agent] = {
         ),
     ),
     "market_watch_agent": market_watch_agent,
+    "mail_agent": mail_agent,
 }
 
 
@@ -519,9 +543,10 @@ def startup() -> None:
 
 @app.on_event("shutdown")
 def shutdown() -> None:
-    """Stop background scheduler cleanly on process shutdown."""
+    """Stop background scheduler and MCP connections cleanly on process shutdown."""
 
     market_watch_scheduler.stop()
+    gmail_service.close()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -687,11 +712,11 @@ def agent_info() -> AgentInfoResponse:
     return AgentInfoResponse(
         description=(
             "Multi-agent-ready hospitality insights API. "
-            "Enabled domain agents: reviews_agent and market_watch_agent."
+            "Enabled domain agents: reviews_agent, market_watch_agent, and mail_agent."
         ),
         purpose=(
-            "Answer business questions from guest reviews and provide proactive market intelligence "
-            "from weather/events/holiday signals."
+            "Answer business questions from guest reviews, provide proactive market intelligence "
+            "from weather/events/holiday signals, and manage Airbnb email workflows."
         ),
         prompt_template=AgentPromptTemplate(
             template=(
@@ -796,6 +821,11 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
             decision.reason += " market_watch is disabled, rerouted to reviews_agent."
             route_step.response["selected_agent"] = decision.agent_name
             route_step.response["reason"] = decision.reason
+        if decision.agent_name == "mail_agent" and not settings.mail_enabled:
+            decision.agent_name = "reviews_agent"
+            decision.reason += " mail_agent is disabled, rerouted to reviews_agent."
+            route_step.response["selected_agent"] = decision.agent_name
+            route_step.response["reason"] = decision.reason
         steps.append(route_step)
 
         target_agent = agent_registry.get(decision.agent_name)
@@ -820,4 +850,111 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
             error=f"{type(exc).__name__}: {exc}",
             response=None,
             steps=steps,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Mail agent endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/mail", response_class=HTMLResponse)
+def mail_ui(request: Request) -> HTMLResponse:
+    """Mail agent UI for inbox triage and owner HITL decisions."""
+
+    return templates.TemplateResponse("mail.html", {"request": request})
+
+
+@app.get("/api/mail/inbox", response_model=MailInboxResponse)
+def mail_inbox() -> MailInboxResponse:
+    """Return classified inbox items for the mail agent UI."""
+
+    if not settings.mail_enabled:
+        return MailInboxResponse(
+            status="error",
+            error="mail_agent is disabled (MAIL_ENABLED=false).",
+            items=[],
+            demo_mode=False,
+        )
+    try:
+        items_raw = mail_agent.get_inbox_summary()
+        items = [
+            MailInboxItemResponse(
+                email_id=item["email_id"],
+                subject=item["subject"],
+                sender=item["sender"],
+                date=item["date"],
+                category=item["category"],
+                confidence=item["confidence"],
+                guest_name=item.get("guest_name"),
+                rating=item.get("rating"),
+                snippet=item["snippet"],
+            )
+            for item in items_raw
+        ]
+        return MailInboxResponse(
+            status="ok",
+            error=None,
+            items=items,
+            demo_mode=gmail_service.is_demo_mode,
+        )
+    except Exception as exc:
+        return MailInboxResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            items=[],
+            demo_mode=gmail_service.is_demo_mode,
+        )
+
+
+@app.post("/api/mail/action", response_model=MailActionResponse)
+def mail_action(payload: MailActionRequest) -> MailActionResponse:
+    """Execute an owner HITL action (rate guest, approve draft, etc.)."""
+
+    if not settings.mail_enabled:
+        return MailActionResponse(
+            status="error",
+            error="mail_agent is disabled (MAIL_ENABLED=false).",
+            response=None,
+            steps=[],
+        )
+    try:
+        owner_action: dict[str, object] = {
+            "email_id": payload.email_id,
+            "action_type": payload.action_type,
+        }
+        if payload.rating is not None:
+            owner_action["rating"] = payload.rating
+        if payload.issues is not None:
+            owner_action["issues"] = payload.issues
+        if payload.free_text is not None:
+            owner_action["free_text"] = payload.free_text
+        if payload.approved is not None:
+            owner_action["approved"] = payload.approved
+        if payload.edited_draft is not None:
+            owner_action["edited_draft"] = payload.edited_draft
+
+        context = {
+            "owner_id": settings.active_owner.owner_id,
+            "owner_name": settings.active_owner.owner_name,
+            "property_id": settings.active_owner.property_id,
+            "property_name": settings.active_owner.property_name,
+        }
+        result = mail_agent.run_with_action(
+            prompt=f"mail action: {payload.action_type}",
+            owner_action=owner_action,
+            context=context,
+        )
+        return MailActionResponse(
+            status="ok",
+            error=None,
+            response=result.response,
+            steps=result.steps,
+        )
+    except Exception as exc:
+        return MailActionResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            response=None,
+            steps=[],
         )

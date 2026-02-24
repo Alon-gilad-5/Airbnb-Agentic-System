@@ -62,6 +62,7 @@ Recommended:
 - `SCRAPING_ALLOWLIST=google_maps,tripadvisor`
 - `SCRAPING_DEFAULT_MAX_REVIEWS=5`
 - `SCRAPING_TIMEOUT_SECONDS=45`
+- `REVIEWS_RELEVANCE_SCORE_THRESHOLD=0.40`
 - `SCRAPING_QUARANTINE_UPSERT_ENABLED=true`
 - `SCRAPING_QUARANTINE_NAMESPACE=airbnb-reviews-web-quarantine`
 - `TICKETMASTER_API_KEY=` (required for event signals)
@@ -168,6 +169,38 @@ Smoke test output is saved to:
 
 - `outputs/sample_properties.json`
 - `outputs/property_smoke_test_results.json`
+
+## Relevance-threshold calibration workflow
+
+Build deterministic benchmark cases (60 total by default, balanced high/low properties):
+
+```bash
+py -3.12 scripts/build_reviews_threshold_benchmark.py --namespace airbnb-reviews-test
+```
+
+Export candidate evidence pool (`top_k=20`) for manual labeling:
+
+```bash
+py -3.12 scripts/export_threshold_labeling_pool.py --namespace airbnb-reviews-test
+```
+
+Initialize manual gold CSV template:
+
+```bash
+py -3.12 scripts/init_reviews_threshold_gold.py --overwrite
+```
+
+After filling `outputs/reviews_threshold_gold.csv`, optimize threshold and produce artifacts:
+
+```bash
+py -3.12 scripts/optimize_reviews_threshold.py
+```
+
+Run fixed-subset validation smoke (scraping disabled to isolate VDB behavior):
+
+```bash
+py -3.12 scripts/run_reviews_threshold_validation.py --namespace airbnb-reviews-test --threshold 0.40
+```
 
 ## Vercel transition notes
 

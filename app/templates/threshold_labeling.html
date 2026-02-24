@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Threshold Labeling</title>
+  <style>
+    :root {
+      --bg: #f2f6fa;
+      --panel: #ffffff;
+      --ink: #12212b;
+      --muted: #5e7585;
+      --accent: #0d9488;
+      --accent-soft: #daf5f3;
+      --border: #cfe0ea;
+      --ok: #117864;
+      --warn: #b03a2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #edf3f8 0%, #f8fbfd 100%);
+      padding: 20px;
+    }
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    h1, h2, h3 {
+      margin: 0;
+    }
+    .header {
+      display: grid;
+      gap: 6px;
+    }
+    .muted {
+      color: var(--muted);
+      margin: 0;
+    }
+    .stats {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .pill {
+      background: #f3f9fd;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.85rem;
+      color: #264154;
+    }
+    .layout {
+      min-height: 70vh;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 14px;
+    }
+    .case-list {
+      display: grid;
+      gap: 8px;
+      max-height: calc(70vh - 30px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .case-btn {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: #fbfdff;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    .case-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .case-line {
+      margin: 0;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .case-title {
+      margin: 0 0 4px 0;
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+    .case-state {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+    .state-labeled {
+      color: var(--ok);
+      border-color: #7ecdbf;
+      background: #ebfbf6;
+    }
+    .state-pending {
+      color: #855b00;
+      border-color: #e7cc84;
+      background: #fff9e8;
+    }
+    .detail {
+      display: grid;
+      gap: 12px;
+    }
+    .prompt {
+      font-size: 1.1rem;
+      line-height: 1.45;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f9fcff;
+    }
+    .meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .answer-choice {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 8px 0 2px 0;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 9px 14px;
+      background: linear-gradient(90deg, #0d9488, #0f766e);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #eef6fb;
+      border: 1px solid var(--border);
+      color: #20445b;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      min-height: 1.25rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .status.error {
+      color: var(--warn);
+    }
+    .status.ok {
+      color: var(--ok);
+    }
+    .candidates {
+      display: grid;
+      gap: 8px;
+      max-height: 45vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .candidate {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fcfeff;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .candidate.checked {
+      border-color: var(--accent);
+      background: #f1fdfc;
+    }
+    .candidate-top {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .candidate-text {
+      margin: 0;
+      font-size: 0.95rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .case-list {
+        max-height: 220px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="card header">
+      <h1>Reviews Threshold Labeling</h1>
+      <p class="muted">Pick the case on the left, then click candidate answers that are truly relevant to the prompt.</p>
+      <div class="stats">
+        <span class="pill" id="statCount">Cases: 0</span>
+        <span class="pill" id="statDone">Labeled: 0</span>
+        <span class="pill" id="statProgress">Progress: 0%</span>
+      </div>
+    </section>
+
+    <section class="layout">
+      <aside class="card">
+        <h3>Cases</h3>
+        <p class="muted">Click a case to label.</p>
+        <div class="case-list" id="caseList"></div>
+      </aside>
+
+      <section class="card detail">
+        <div class="prompt" id="promptText">Loading...</div>
+        <div class="meta" id="meta"></div>
+
+        <div>
+          <strong>Should the agent answer this prompt?</strong>
+          <div class="answer-choice">
+            <label><input type="radio" name="shouldAnswer" value="1"> Yes, answerable</label>
+            <label><input type="radio" name="shouldAnswer" value="0"> No, no reliable evidence</label>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button id="saveBtn">Save</button>
+          <button id="saveNextBtn">Save + Next</button>
+          <button id="prevBtn" class="secondary">Prev</button>
+          <button id="nextBtn" class="secondary">Next</button>
+          <span class="status" id="status"></span>
+        </div>
+
+        <h3>Candidate Answers</h3>
+        <p class="muted">Select one or more review candidates that best answer the prompt.</p>
+        <div class="candidates" id="candidates"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      cases: [],
+      currentIndex: 0,
+      saving: false,
+    };
+
+    const caseListEl = document.getElementById("caseList");
+    const promptEl = document.getElementById("promptText");
+    const metaEl = document.getElementById("meta");
+    const statusEl = document.getElementById("status");
+    const candidatesEl = document.getElementById("candidates");
+    const statCountEl = document.getElementById("statCount");
+    const statDoneEl = document.getElementById("statDone");
+    const statProgressEl = document.getElementById("statProgress");
+    const saveBtn = document.getElementById("saveBtn");
+    const saveNextBtn = document.getElementById("saveNextBtn");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+
+    function setStatus(text, kind = "") {
+      statusEl.className = `status ${kind}`.trim();
+      statusEl.textContent = text;
+    }
+
+    function currentCase() {
+      return state.cases[state.currentIndex] || null;
+    }
+
+    function selectedShouldAnswer() {
+      const checked = document.querySelector('input[name="shouldAnswer"]:checked');
+      if (!checked) {
+        return null;
+      }
+      return checked.value === "1";
+    }
+
+    function selectedVectorIds() {
+      const ids = [];
+      for (const checkbox of candidatesEl.querySelectorAll('input[type="checkbox"]:checked')) {
+        ids.push(checkbox.value);
+      }
+      return ids;
+    }
+
+    function updateStats() {
+      const total = state.cases.length;
+      const done = state.cases.filter((item) => item.labeled).length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      statCountEl.textContent = `Cases: ${total}`;
+      statDoneEl.textContent = `Labeled: ${done}`;
+      statProgressEl.textContent = `Progress: ${pct}%`;
+    }
+
+    function renderCaseList() {
+      caseListEl.innerHTML = "";
+      state.cases.forEach((item, index) => {
+        const btn = document.createElement("button");
+        btn.className = `case-btn${index === state.currentIndex ? " active" : ""}`;
+        btn.type = "button";
+        btn.addEventListener("click", () => {
+          state.currentIndex = index;
+          renderCaseList();
+          renderCaseDetail();
+          setStatus("");
+        });
+
+        const title = document.createElement("p");
+        title.className = "case-title";
+        title.textContent = `${item.case_id} - ${item.topic}`;
+
+        const line = document.createElement("p");
+        line.className = "case-line";
+        line.textContent = `property=${item.property_id} | region=${item.region}`;
+
+        const stateTag = document.createElement("span");
+        stateTag.className = `case-state ${item.labeled ? "state-labeled" : "state-pending"}`;
+        stateTag.textContent = item.labeled ? "Labeled" : "Pending";
+
+        btn.appendChild(title);
+        btn.appendChild(line);
+        btn.appendChild(stateTag);
+        caseListEl.appendChild(btn);
+      });
+      updateStats();
+    }
+
+    function renderMetaPill(text) {
+      const span = document.createElement("span");
+      span.className = "pill";
+      span.textContent = text;
+      return span;
+    }
+
+    function renderCaseDetail() {
+      const item = currentCase();
+      if (!item) {
+        promptEl.textContent = "No cases found.";
+        metaEl.innerHTML = "";
+        candidatesEl.innerHTML = "";
+        return;
+      }
+
+      promptEl.textContent = item.prompt;
+      metaEl.innerHTML = "";
+      metaEl.appendChild(renderMetaPill(`Case: ${item.case_id}`));
+      metaEl.appendChild(renderMetaPill(`Topic: ${item.topic}`));
+      metaEl.appendChild(renderMetaPill(`Tier: ${item.tier}`));
+      metaEl.appendChild(renderMetaPill(`Property: ${item.property_id}`));
+      metaEl.appendChild(renderMetaPill(`Region: ${item.region}`));
+      metaEl.appendChild(renderMetaPill(`Candidates: ${item.candidate_count}`));
+
+      const shouldYes = document.querySelector('input[name="shouldAnswer"][value="1"]');
+      const shouldNo = document.querySelector('input[name="shouldAnswer"][value="0"]');
+      shouldYes.checked = item.should_answer === true;
+      shouldNo.checked = item.should_answer === false;
+
+      candidatesEl.innerHTML = "";
+      const selectedSet = new Set(item.relevant_vector_ids || []);
+      for (const candidate of item.candidates || []) {
+        const wrapper = document.createElement("label");
+        wrapper.className = `candidate${selectedSet.has(candidate.vector_id) ? " checked" : ""}`;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = candidate.vector_id;
+        checkbox.checked = selectedSet.has(candidate.vector_id);
+        checkbox.addEventListener("change", () => {
+          wrapper.className = checkbox.checked ? "candidate checked" : "candidate";
+          if (checkbox.checked) {
+            const yes = document.querySelector('input[name="shouldAnswer"][value="1"]');
+            if (yes && !yes.checked) {
+              yes.checked = true;
+            }
+          }
+        });
+
+        const top = document.createElement("div");
+        top.className = "candidate-top";
+        top.textContent = `vector=${candidate.vector_id} | score=${candidate.score.toFixed(3)} | date=${candidate.review_date || "n/a"}`;
+
+        const text = document.createElement("p");
+        text.className = "candidate-text";
+        text.textContent = candidate.review_text;
+
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(top);
+        wrapper.appendChild(text);
+        candidatesEl.appendChild(wrapper);
+      }
+
+      prevBtn.disabled = state.currentIndex === 0;
+      nextBtn.disabled = state.currentIndex >= state.cases.length - 1;
+    }
+
+    async function loadData() {
+      setStatus("Loading cases...");
+      const res = await fetch("/api/threshold_labeling/data");
+      if (!res.ok) {
+        throw new Error(`Failed to load data: ${res.status}`);
+      }
+      const payload = await res.json();
+      state.cases = payload.cases || [];
+      state.currentIndex = 0;
+      renderCaseList();
+      renderCaseDetail();
+      setStatus("Ready.", "ok");
+    }
+
+    async function saveCurrentCase(goNext = false) {
+      if (state.saving) {
+        return;
+      }
+      const item = currentCase();
+      if (!item) {
+        return;
+      }
+      const shouldAnswer = selectedShouldAnswer();
+      if (shouldAnswer === null) {
+        setStatus("Select Yes/No for 'should answer'.", "error");
+        return;
+      }
+      const vectorIds = selectedVectorIds();
+      if (shouldAnswer && vectorIds.length === 0) {
+        setStatus("For should_answer=Yes, pick at least one candidate.", "error");
+        return;
+      }
+      if (!shouldAnswer && vectorIds.length > 0) {
+        setStatus("For should_answer=No, uncheck all candidates.", "error");
+        return;
+      }
+
+      state.saving = true;
+      saveBtn.disabled = true;
+      saveNextBtn.disabled = true;
+      setStatus("Saving...");
+
+      try {
+        const res = await fetch("/api/threshold_labeling/save", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            case_id: item.case_id,
+            should_answer: shouldAnswer,
+            relevant_vector_ids: vectorIds,
+          }),
+        });
+        const payload = await res.json();
+        if (!res.ok || payload.status !== "ok") {
+          throw new Error(payload.detail || payload.error || `Save failed (${res.status})`);
+        }
+
+        item.should_answer = shouldAnswer;
+        item.relevant_vector_ids = vectorIds;
+        item.labeled = true;
+        renderCaseList();
+        renderCaseDetail();
+        setStatus(`Saved ${item.case_id}.`, "ok");
+
+        if (goNext && state.currentIndex < state.cases.length - 1) {
+          state.currentIndex += 1;
+          renderCaseList();
+          renderCaseDetail();
+          setStatus(`Saved ${item.case_id}. Moved to next case.`, "ok");
+        }
+      } catch (err) {
+        setStatus(String(err), "error");
+      } finally {
+        state.saving = false;
+        saveBtn.disabled = false;
+        saveNextBtn.disabled = false;
+      }
+    }
+
+    saveBtn.addEventListener("click", () => saveCurrentCase(false));
+    saveNextBtn.addEventListener("click", () => saveCurrentCase(true));
+    prevBtn.addEventListener("click", () => {
+      if (state.currentIndex > 0) {
+        state.currentIndex -= 1;
+        renderCaseList();
+        renderCaseDetail();
+        setStatus("");
+      }
+    });
+    nextBtn.addEventListener("click", () => {
+      if (state.currentIndex < state.cases.length - 1) {
+        state.currentIndex += 1;
+        renderCaseList();
+        renderCaseDetail();
+        setStatus("");
+      }
+    });
+
+    loadData().catch((err) => {
+      setStatus(String(err), "error");
+      promptEl.textContent = "Failed to load labeling data.";
+    });
+  </script>
+</body>
+</html>
