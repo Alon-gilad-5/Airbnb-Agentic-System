@@ -90,15 +90,14 @@ def _build_evidence_context(matches: list[RetrievedReview], max_reviews: int) ->
 
 
 def _deterministic_summary(matches: list[RetrievedReview]) -> str:
-    lines = ["Based on the strongest matching reviews, here is a concise evidence summary:"]
-    for i, match in enumerate(matches[:3], start=1):
-        md = match.metadata
-        text = str(md.get("review_text", "")).strip()
-        region = str(md.get("location", md.get("region", "unknown")))
-        property_id = str(md.get("property_id", "unknown"))
-        short = text[:140] + ("..." if len(text) > 140 else "")
-        lines.append(f"{i}. (score={match.score:.4f}, region={region}, property_id={property_id}) {short}")
-    return "\n".join(lines)
+    count = len(matches[:3])
+    if count == 0:
+        return "No matching reviews were found."
+    return (
+        f"Found {count} matching review{'s' if count != 1 else ''}. "
+        "The LLM synthesis service is currently unavailable, so only raw evidence is shown below.\n\n"
+        "Confidence: low"
+    )
 
 
 def _cap_words(text: str, max_words: int) -> str:
@@ -116,6 +115,20 @@ def _detect_hallucination_risk(answer_text: str) -> tuple[bool, list[str]]:
     lowered = answer_text.lower()
     matched = [phrase for phrase in phrases if re.search(rf"\b{re.escape(phrase)}\b", lowered)]
     return bool(matched), matched
+
+
+def _build_evidence_snippets(evidence: list[RetrievedReview], max_reviews: int) -> list[str]:
+    """Build short human-readable evidence snippets for the UI evidence panel."""
+    snippets: list[str] = []
+    for match in evidence[:max_reviews]:
+        md = match.metadata
+        text = str(md.get("review_text", "")).strip()
+        short = text[:200] + ("..." if len(text) > 200 else "")
+        date = md.get("review_date", "unknown")
+        reviewer = md.get("reviewer_name", "Guest")
+        score = f"{match.score:.2f}"
+        snippets.append(f"[{score}] \"{short}\" — {reviewer}, {date}")
+    return snippets
 
 
 def _build_citations(evidence: list[RetrievedReview], max_citations: int) -> list[str]:
@@ -556,9 +569,13 @@ class ReviewsPipeline:
             "Confidence policy:\n"
             "- 1-2 relevant reviews => confidence must be low.\n"
             "- 3+ relevant reviews => confidence can be medium/high only if supported.\n\n"
-            "Return a concise business-friendly answer with:\n"
-            "1) direct answer\n2) key evidence bullets\n3) confidence (high/medium/low)\n"
-            "4) explicit source-based citations"
+            "Return ONLY a concise 2-4 sentence business-friendly answer that directly "
+            "addresses the question, followed by a confidence level.\n"
+            "Format:\n"
+            "<answer text>\n\n"
+            "Confidence: <high/medium/low>\n\n"
+            "Do NOT include evidence bullets, citations, or review numbers in your answer. "
+            "Just provide a clear, natural-language summary."
         )
 
         try:
@@ -617,14 +634,25 @@ class ReviewsPipeline:
         disclaimer_prefix: str | None,
         evidence_count: int,
     ) -> dict[str, Any]:
-        """Shared finalization: word cap, disclaimer, citations, hallucination guard."""
+        """Shared finalization: word cap, disclaimer, structured evidence, hallucination guard."""
         cfg = self._config
         final_answer = answer_text.strip()
         final_answer = _cap_words(final_answer, cfg.max_answer_words)
         if disclaimer_prefix:
             final_answer = f"{disclaimer_prefix}\n\n{final_answer}"
+
+        evidence_snippets = _build_evidence_snippets(evidence, cfg.max_context_reviews)
         citations = _build_citations(evidence, cfg.max_citations)
-        final_answer = _append_citations(final_answer, citations)
+
+        sections = [final_answer, "---EVIDENCE---"]
+        for snippet in evidence_snippets:
+            sections.append(snippet)
+        sections.append("---CITATIONS---")
+        for citation in citations:
+            sections.append(citation)
+
+        structured_answer = "\n".join(sections)
+
         risk_flag, matched_phrases = _detect_hallucination_risk(final_answer)
         hall_step = StepLog(
             module="reviews_agent.hallucination_guard",
@@ -641,7 +669,7 @@ class ReviewsPipeline:
                 "action": "flag_only",
             },
         )
-        return {"answer": final_answer, "steps": [hall_step]}
+        return {"answer": structured_answer, "steps": [hall_step]}
 
 
 # ---------------------------------------------------------------------------

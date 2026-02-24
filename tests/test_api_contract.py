@@ -195,7 +195,7 @@ def test_reviews_chat_unavailable_uses_deterministic_fallback() -> None:
     ]
     agent = _make_reviews_agent(retriever_matches=matches, chat_available=False)
     result = agent.run("What do guests say about wifi?")
-    assert "strongest matching reviews" in result.response
+    assert "LLM synthesis service is currently unavailable" in result.response
     module_names = {s.module for s in result.steps}
     assert "reviews_agent.retrieval" in module_names
     assert "reviews_agent.evidence_guard" in module_names

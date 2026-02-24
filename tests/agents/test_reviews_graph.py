@@ -135,7 +135,7 @@ def test_graph_chat_unavailable_uses_deterministic_summary() -> None:
     ]
     graph = _build(matches=matches, chat_available=False)
     result = graph.invoke({"prompt": "wifi?", "context": {}, "steps": []})
-    assert "strongest matching reviews" in result["final_answer"]
+    assert "LLM synthesis service is currently unavailable" in result["final_answer"]
 
 
 def test_graph_thin_evidence_adds_disclaimer() -> None:

@@ -81,6 +81,47 @@
       word-break: break-word;
       margin: 0;
     }
+    .answer-section {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: var(--ink);
+    }
+    .evidence-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--accent2);
+      font-size: 0.9rem;
+      padding: 6px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 12px;
+      font-weight: 600;
+    }
+    .evidence-toggle:hover { background: #f0f5fa; }
+    .evidence-panel {
+      display: none;
+      margin-top: 10px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+    .evidence-panel.open { display: block; }
+    .evidence-item {
+      font-size: 0.88rem;
+      color: var(--muted);
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--border);
+      line-height: 1.5;
+    }
+    .evidence-item:last-child { border-bottom: none; }
+    .citations-list {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .citations-list span {
+      display: block;
+      padding: 2px 0;
+    }
     .steps {
       display: grid;
       gap: 10px;
@@ -119,7 +160,7 @@
 
     <section class="card">
       <h2>Final Response</h2>
-      <pre id="finalResponse">No run yet.</pre>
+      <div id="finalResponse"><p class="muted">No run yet.</p></div>
     </section>
 
     <section class="card">
@@ -134,6 +175,56 @@
     const statusEl = document.getElementById("status");
     const finalEl = document.getElementById("finalResponse");
     const stepsEl = document.getElementById("steps");
+
+    function escHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function renderResponse(raw) {
+      if (!raw) { finalEl.innerHTML = '<p class="muted">No response.</p>'; return; }
+
+      const evSep = "---EVIDENCE---";
+      const citSep = "---CITATIONS---";
+      const hasStructure = raw.includes(evSep);
+
+      if (!hasStructure) {
+        finalEl.innerHTML = `<div class="answer-section">${escHtml(raw)}</div>`;
+        return;
+      }
+
+      const [answerPart, rest] = raw.split(evSep, 2);
+      let evidenceLines = [];
+      let citationLines = [];
+      if (rest && rest.includes(citSep)) {
+        const [evPart, citPart] = rest.split(citSep, 2);
+        evidenceLines = evPart.trim().split("\n").filter(l => l.trim());
+        citationLines = citPart.trim().split("\n").filter(l => l.trim());
+      } else if (rest) {
+        evidenceLines = rest.trim().split("\n").filter(l => l.trim());
+      }
+
+      let html = `<div class="answer-section">${escHtml(answerPart.trim())}</div>`;
+
+      if (evidenceLines.length) {
+        html += `<button class="evidence-toggle" onclick="this.nextElementSibling.classList.toggle('open'); this.textContent = this.nextElementSibling.classList.contains('open') ? 'Hide supporting evidence' : 'Show supporting evidence (${evidenceLines.length})'">Show supporting evidence (${evidenceLines.length})</button>`;
+        html += '<div class="evidence-panel">';
+        for (const line of evidenceLines) {
+          html += `<div class="evidence-item">${escHtml(line)}</div>`;
+        }
+        if (citationLines.length) {
+          html += '<div class="citations-list"><strong>Sources:</strong>';
+          for (const cit of citationLines) {
+            html += `<span>${escHtml(cit)}</span>`;
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      finalEl.innerHTML = html;
+    }
 
     function renderSteps(steps) {
       stepsEl.innerHTML = "";
@@ -164,7 +255,7 @@
 
       runBtn.disabled = true;
       statusEl.textContent = "Running...";
-      finalEl.textContent = "Working...";
+      finalEl.innerHTML = '<p class="muted">Working...</p>';
       stepsEl.innerHTML = "";
 
       try {
@@ -174,11 +265,15 @@
           body: JSON.stringify({prompt}),
         });
         const data = await res.json();
-        finalEl.textContent = data.response ?? `(error) ${data.error}`;
+        if (data.status === "error") {
+          finalEl.innerHTML = `<div class="answer-section" style="color:#b91c1c">${escHtml(data.error)}</div>`;
+        } else {
+          renderResponse(data.response);
+        }
         renderSteps(data.steps || []);
         statusEl.textContent = `Done (${data.status})`;
       } catch (err) {
-        finalEl.textContent = String(err);
+        finalEl.innerHTML = `<div class="answer-section" style="color:#b91c1c">${escHtml(String(err))}</div>`;
         statusEl.textContent = "Failed";
       } finally {
         runBtn.disabled = false;
