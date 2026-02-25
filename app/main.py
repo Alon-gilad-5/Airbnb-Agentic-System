@@ -7,6 +7,7 @@ import base64
 import csv
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -551,22 +552,31 @@ def startup() -> None:
             )
     market_watch_scheduler.start()
 
-    # Gmail push: renew watch on startup if enabled and expiration missing or past
+    # Gmail push: renew watch in a background thread so slow DB / API calls
+    # never block uvicorn from binding the port on Render.
     if settings.mail_push_enabled and settings.mail_push_topic and settings.mail_enabled:
-        state = get_push_state(settings.database_url)
-        now_ms = int(time.time() * 1000)
-        expiration_ts = (state or {}).get("expiration_ts") if state else None
-        if expiration_ts is None or expiration_ts <= now_ms:
-            watch_result = gmail_service.setup_watch(settings.mail_push_topic)
-            if watch_result:
-                set_push_state(
-                    settings.database_url,
-                    str(watch_result.get("historyId", "")),
-                    expiration_ts=watch_result.get("expiration"),
-                )
-                logger.info("Gmail push watch renewed on startup")
-            else:
-                logger.warning("Gmail push watch renewal failed on startup")
+        def _renew_watch() -> None:
+            try:
+                state = get_push_state(settings.database_url)
+                now_ms = int(time.time() * 1000)
+                expiration_ts = (state or {}).get("expiration_ts") if state else None
+                if expiration_ts is None or expiration_ts <= now_ms:
+                    watch_result = gmail_service.setup_watch(settings.mail_push_topic)
+                    if watch_result:
+                        set_push_state(
+                            settings.database_url,
+                            str(watch_result.get("historyId", "")),
+                            expiration_ts=watch_result.get("expiration"),
+                        )
+                        logger.info("Gmail push watch renewed on startup")
+                    else:
+                        logger.warning("Gmail push watch renewal failed on startup")
+                else:
+                    logger.info("Gmail push watch still valid, skipping renewal")
+            except Exception as exc:
+                logger.warning("Gmail push watch renewal error: %s: %s", type(exc).__name__, exc)
+
+        threading.Thread(target=_renew_watch, daemon=True, name="gmail-watch-renew").start()
 
 
 @app.on_event("shutdown")
