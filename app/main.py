@@ -1110,21 +1110,34 @@ async def mail_push(
 
 
 @app.post("/api/mail/watch")
-def mail_watch() -> dict[str, str | bool]:
+def mail_watch() -> dict:
     """Register Gmail push watch when mail_push_enabled and mail_push_topic are set."""
-    if not settings.mail_push_enabled or not settings.mail_push_topic:
-        return {"status": "error", "error": "Mail push or topic not configured", "ok": False}
-    if not settings.mail_enabled:
-        return {"status": "error", "error": "Mail agent disabled", "ok": False}
-    watch_result = gmail_service.setup_watch(settings.mail_push_topic)
-    if not watch_result:
-        return {"status": "error", "error": "setup_watch failed", "ok": False}
-    set_push_state(
-        settings.database_url,
-        str(watch_result.get("historyId", "")),
-        expiration_ts=watch_result.get("expiration"),
-    )
-    return {"status": "ok", "ok": True, "historyId": watch_result.get("historyId"), "expiration": watch_result.get("expiration")}
+    try:
+        if not settings.mail_push_enabled or not settings.mail_push_topic:
+            return {"status": "error", "error": "Mail push or topic not configured", "ok": False}
+        if not settings.mail_enabled:
+            return {"status": "error", "error": "Mail agent disabled", "ok": False}
+        is_demo = gmail_service.is_demo_mode
+        has_api = gmail_service._api_client is not None
+        if is_demo and not has_api:
+            return {
+                "status": "error",
+                "ok": False,
+                "error": f"Gmail service is in demo mode (no API client). Check GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN env vars.",
+                "debug": {"demo_mode": is_demo, "has_api_client": has_api},
+            }
+        watch_result = gmail_service.setup_watch(settings.mail_push_topic)
+        if not watch_result:
+            return {"status": "error", "error": "setup_watch returned None", "ok": False}
+        set_push_state(
+            settings.database_url,
+            str(watch_result.get("historyId", "")),
+            expiration_ts=watch_result.get("expiration"),
+        )
+        return {"status": "ok", "ok": True, "historyId": str(watch_result.get("historyId")), "expiration": str(watch_result.get("expiration"))}
+    except Exception as exc:
+        logger.exception("mail_watch failed")
+        return {"status": "error", "error": f"{type(exc).__name__}: {exc}", "ok": False}
 
 
 @app.post("/api/mail/action", response_model=MailActionResponse)
