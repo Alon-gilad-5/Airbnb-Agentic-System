@@ -206,12 +206,12 @@ class PostgresMarketAlertStore:
             raise RuntimeError(
                 "Postgres backend requires psycopg. Add `psycopg[binary]` dependency."
             ) from exc
-        return psycopg.connect(self.database_url, prepare_threshold=0)
+        return psycopg.connect(self.database_url, prepare_threshold=None)
 
     def _ensure_schema(self) -> None:
         """Create table/index if missing."""
 
-        ddl = """
+        ddl_table = """
         CREATE TABLE IF NOT EXISTS market_watch_alerts (
             id TEXT PRIMARY KEY,
             created_at_utc TIMESTAMPTZ NOT NULL,
@@ -229,13 +229,16 @@ class PostgresMarketAlertStore:
             source_name TEXT NOT NULL,
             source_url TEXT,
             evidence_json JSONB NOT NULL
-        );
+        )
+        """
+        ddl_index = """
         CREATE INDEX IF NOT EXISTS idx_market_watch_scope_time
-        ON market_watch_alerts(owner_id, property_id, created_at_utc DESC);
+        ON market_watch_alerts(owner_id, property_id, created_at_utc DESC)
         """
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(ddl)
+                cur.execute(ddl_table)
+                cur.execute(ddl_index)
             conn.commit()
 
     def insert_alerts(self, alerts: list[MarketAlertRecord]) -> int:

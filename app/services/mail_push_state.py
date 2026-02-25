@@ -75,7 +75,7 @@ def _get_push_state_postgres(database_url: str) -> dict[str, Any] | None:
         return _get_push_state_file()
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=0) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -111,7 +111,7 @@ def _set_push_state_postgres(
         return
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=0) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -203,7 +203,7 @@ def _get_owner_choice_postgres(database_url: str, email_id: str) -> str | None:
         return _get_owner_choice_file(email_id)
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=0) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -233,7 +233,7 @@ def _set_owner_choice_postgres(database_url: str, email_id: str, choice: str) ->
         return
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=0) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
