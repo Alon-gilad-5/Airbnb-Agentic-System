@@ -263,6 +263,8 @@
       text-decoration: underline;
     }
     .inbox-toggle:hover { color: var(--accent); }
+    .settings-checkbox { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem; }
+    .settings-checkbox input { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -279,6 +281,12 @@
       <p>
         <span class="conn-dot disconnected" id="connDot"></span>
         <span id="connLabel" class="muted">Connecting...</span>
+      </p>
+      <p style="margin-top:10px;">
+        <label class="settings-checkbox">
+          <input type="checkbox" id="autoSendGoodReviews" />
+          <span>Auto-send good reviews (rating &gt; 3) without approval</span>
+        </label>
       </p>
     </section>
 
@@ -322,6 +330,7 @@
     const inboxToggle = document.getElementById("inboxToggle");
     const inboxSection = document.getElementById("inboxSection");
     const inboxList = document.getElementById("inboxList");
+    const autoSendGoodReviewsCheckbox = document.getElementById("autoSendGoodReviews");
 
     const notifications = {};
     const emailActionCache = {};
@@ -485,6 +494,20 @@
           <span class="badge badge-bad">Bad review — owner consultation required</span>
           <button class="generate-reply-options-btn" data-email-id="${emailId}">Generate reply options</button>
         </div>`;
+      }
+      if (hasDraft && action.thread_id && action.reply_to) {
+        let html = `<div class="email-actions" data-email-id="${emailId}">
+          <span class="badge badge-good">Good review — approve draft or don't reply</span>
+          <div class="draft-box" data-email-id="${emailId}">
+            <strong>Draft:</strong>
+            <textarea class="draft-edit action-text" data-email-id="${emailId}" rows="4">${escHtml(draft)}</textarea>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="dont-reply-btn secondary" data-email-id="${emailId}" data-dont-reply="1">Don't reply</button>
+            <button class="approve-send-btn" data-email-id="${emailId}">Approve and send</button>
+          </div>
+        </div>`;
+        return html;
       }
       return `<div class="email-actions">
         <button class="run-response-btn" data-email-id="${emailId}">Generate Response Draft</button>
@@ -729,6 +752,18 @@
           const match = data.mail_actions.find(a => a.email_id === emailId);
           if (match) {
             emailActionCache[emailId] = match;
+            const notif = Object.values(notifications).find(n => n.email_id === emailId);
+            if (notif && notif.action_data) {
+              notif.action_data = match;
+              const card = notifList.querySelector(`[data-email-id="${emailId}"]`);
+              if (card) {
+                const detail = card.querySelector(".notif-detail");
+                if (detail) {
+                  detail.innerHTML = `<div class="notif-snippet">${escHtml(notif.snippet)}</div>${renderNotifActions(notif)}`;
+                  bindActionHandlersInCard(card);
+                }
+              }
+            }
           }
         }
       } catch (err) {
@@ -929,10 +964,46 @@
     });
 
     // ------------------------------------------------------------------
+    // Mail settings (auto-send good reviews)
+    // ------------------------------------------------------------------
+
+    async function loadMailSettings() {
+      try {
+        const res = await fetch("/api/mail/settings");
+        const data = await res.json();
+        if (data.status === "ok") {
+          autoSendGoodReviewsCheckbox.checked = !!data.auto_send_good_reviews;
+        }
+      } catch (e) {
+        console.error("Failed to load mail settings:", e);
+      }
+    }
+
+    autoSendGoodReviewsCheckbox.addEventListener("change", async () => {
+      const checked = autoSendGoodReviewsCheckbox.checked;
+      try {
+        const res = await fetch("/api/mail/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ auto_send_good_reviews: checked }),
+        });
+        const data = await res.json();
+        if (data.status !== "ok") {
+          console.error("Failed to save mail settings:", data.error);
+          autoSendGoodReviewsCheckbox.checked = !checked;
+        }
+      } catch (e) {
+        console.error("Failed to save mail settings:", e);
+        autoSendGoodReviewsCheckbox.checked = !checked;
+      }
+    });
+
+    // ------------------------------------------------------------------
     // Init
     // ------------------------------------------------------------------
 
     loadNotifications();
+    loadMailSettings();
     connectSSE();
   </script>
 </body>

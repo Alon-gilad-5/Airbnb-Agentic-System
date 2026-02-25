@@ -36,6 +36,8 @@ from app.schemas import (
     MailActionResponse,
     MailInboxItemResponse,
     MailInboxResponse,
+    MailSettingsResponse,
+    MailSettingsUpdateRequest,
     MarketAlertResponse,
     MarketWatchAlertsResponse,
     MarketWatchRunResponse,
@@ -57,7 +59,14 @@ from app.services.chat_service import ChatService
 from app.services.embeddings import EmbeddingService
 from app.services.pinecone_retriever import PineconeRetriever
 from app.services.gmail_service import GmailService
-from app.services.mail_push_state import get_owner_choice, get_push_state, set_owner_choice, set_push_state
+from app.services.mail_push_state import (
+    get_mail_preferences,
+    get_owner_choice,
+    get_push_state,
+    set_mail_preferences,
+    set_owner_choice,
+    set_push_state,
+)
 from app.services.notification_store import NotificationStore
 from app.services.web_review_ingest import WebReviewIngestService
 from app.services.web_review_scraper import PlaywrightReviewScraper
@@ -896,6 +905,34 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
 # ---------------------------------------------------------------------------
 
 
+def _try_auto_send_good_review(action: dict, gmail_svc: GmailService) -> bool:
+    """If action is a good review (rating > 3) with draft and reply metadata, send reply. Returns True if sent, False otherwise."""
+    if action.get("category") != "new_property_review":
+        return False
+    rating = action.get("rating")
+    if rating is None or rating <= 3:
+        return False
+    draft = action.get("draft")
+    thread_id = action.get("thread_id")
+    reply_to = action.get("reply_to")
+    if not draft or not thread_id or not reply_to:
+        return False
+    subject = action.get("subject") or "Re: (no subject)"
+    ok = gmail_svc.send_reply(
+        thread_id=thread_id,
+        to=reply_to,
+        subject=subject,
+        body=draft,
+        in_reply_to=action.get("in_reply_to"),
+        references=action.get("references"),
+    )
+    if ok:
+        logger.info("Auto-sent good review reply for email_id=%s", action.get("email_id"))
+    else:
+        logger.warning("Auto-send good review failed for email_id=%s", action.get("email_id"))
+    return ok
+
+
 def _notify_owner_for_mail_actions(
     mail_actions: list[dict],
     gmail_svc: GmailService,
@@ -975,9 +1012,14 @@ def mail_inbox() -> MailInboxResponse:
                 result = mail_agent.run_on_messages(messages, context=context)
                 mail_actions = result.mail_actions
                 if mail_actions:
+                    prefs = get_mail_preferences(settings.database_url)
+                    auto_send = prefs.get("auto_send_good_reviews", False)
                     for action in mail_actions:
-                        if action.get("requires_owner"):
-                            notification_store.add_notification(action)
+                        if not action.get("requires_owner"):
+                            continue
+                        if auto_send and _try_auto_send_good_review(action, gmail_service):
+                            continue
+                        notification_store.add_notification(action)
         except Exception as proc_exc:
             logger.warning("mail inbox auto-process failed: %s", proc_exc)
 
@@ -1053,6 +1095,45 @@ def dismiss_notification(notification_id: str) -> dict[str, str | bool]:
     return {"status": "error", "error": "Notification not found or already handled"}
 
 
+# ---------------------------------------------------------------------------
+# Mail settings (persisted preferences)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/mail/settings", response_model=MailSettingsResponse)
+def get_mail_settings() -> MailSettingsResponse:
+    """Return current mail preferences (e.g. auto_send_good_reviews)."""
+    try:
+        prefs = get_mail_preferences(settings.database_url)
+        return MailSettingsResponse(
+            status="ok",
+            auto_send_good_reviews=prefs.get("auto_send_good_reviews", False),
+        )
+    except Exception as exc:
+        return MailSettingsResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            auto_send_good_reviews=False,
+        )
+
+
+@app.post("/api/mail/settings", response_model=MailSettingsResponse)
+def update_mail_settings(payload: MailSettingsUpdateRequest) -> MailSettingsResponse:
+    """Update mail preferences (e.g. auto_send_good_reviews)."""
+    try:
+        set_mail_preferences(settings.database_url, payload.auto_send_good_reviews)
+        return MailSettingsResponse(
+            status="ok",
+            auto_send_good_reviews=payload.auto_send_good_reviews,
+        )
+    except Exception as exc:
+        return MailSettingsResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            auto_send_good_reviews=False,
+        )
+
+
 @app.post("/api/mail/push")
 async def mail_push(
     request: Request,
@@ -1101,12 +1182,19 @@ async def mail_push(
         if messages:
             result = mail_agent.run_on_messages(messages)
             actions = result.mail_actions or []
+            prefs = get_mail_preferences(db_url)
+            auto_send = prefs.get("auto_send_good_reviews", False)
+            actions_needing_notify: list[dict] = []
             for action in actions:
-                if action.get("requires_owner"):
-                    notification_store.add_notification(action)
-            if any(a.get("requires_owner") for a in actions):
+                if not action.get("requires_owner"):
+                    continue
+                if auto_send and _try_auto_send_good_review(action, gmail_service):
+                    continue
+                notification_store.add_notification(action)
+                actions_needing_notify.append(action)
+            if actions_needing_notify:
                 _notify_owner_for_mail_actions(
-                    actions,
+                    actions_needing_notify,
                     gmail_service,
                     settings.mail_owner_notify_email,
                     settings.app_base_url,

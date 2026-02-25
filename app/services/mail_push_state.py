@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PUSH_STATE_FILE = Path("data/mail_push_state.json")
 DEFAULT_OWNER_CHOICES_FILE = Path("data/mail_owner_choices.json")
+DEFAULT_MAIL_PREFERENCES_FILE = Path("data/mail_preferences.json")
 
 
 def _ensure_data_dir(path: Path) -> None:
@@ -258,3 +259,117 @@ def _set_owner_choice_postgres(database_url: str, email_id: str, choice: str) ->
     except Exception as e:
         logger.warning("Failed to set owner choice in Postgres: %s", e)
         _set_owner_choice_file(email_id, choice)
+
+
+# ---------------------------------------------------------------------------
+# Mail preferences (auto_send_good_reviews, etc.)
+# ---------------------------------------------------------------------------
+
+
+def get_mail_preferences(database_url: str | None) -> dict[str, Any]:
+    """Return stored mail preferences: {auto_send_good_reviews: bool}. Defaults to False."""
+    if database_url and database_url.strip():
+        return _get_mail_preferences_postgres(database_url)
+    return _get_mail_preferences_file()
+
+
+def set_mail_preferences(
+    database_url: str | None,
+    auto_send_good_reviews: bool,
+) -> None:
+    """Persist mail preferences."""
+    if database_url and database_url.strip():
+        _set_mail_preferences_postgres(database_url, auto_send_good_reviews)
+    else:
+        _set_mail_preferences_file(auto_send_good_reviews)
+
+
+def _get_mail_preferences_file() -> dict[str, Any]:
+    path = DEFAULT_MAIL_PREFERENCES_FILE
+    if not path.exists():
+        return {"auto_send_good_reviews": False}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return {
+                "auto_send_good_reviews": bool(data.get("auto_send_good_reviews", False)),
+            }
+        return {"auto_send_good_reviews": False}
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to read mail preferences file %s: %s", path, e)
+        return {"auto_send_good_reviews": False}
+
+
+def _set_mail_preferences_file(auto_send_good_reviews: bool) -> None:
+    path = DEFAULT_MAIL_PREFERENCES_FILE
+    _ensure_data_dir(path)
+    data: dict[str, Any] = {"auto_send_good_reviews": auto_send_good_reviews}
+    try:
+        path.write_text(json.dumps(data, indent=0), encoding="utf-8")
+    except OSError as e:
+        logger.warning("Failed to write mail preferences file %s: %s", path, e)
+
+
+def _get_mail_preferences_postgres(database_url: str) -> dict[str, Any]:
+    try:
+        import psycopg
+    except ImportError:
+        return _get_mail_preferences_file()
+
+    try:
+        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mail_preferences (
+                        id TEXT PRIMARY KEY DEFAULT 'default',
+                        auto_send_good_reviews BOOLEAN NOT NULL DEFAULT FALSE,
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                    """
+                )
+                cur.execute(
+                    "SELECT auto_send_good_reviews FROM mail_preferences WHERE id = 'default'"
+                )
+                row = cur.fetchone()
+                if row is not None:
+                    return {"auto_send_good_reviews": bool(row[0])}
+                return {"auto_send_good_reviews": False}
+    except Exception as e:
+        logger.warning("Failed to get mail preferences from Postgres: %s", e)
+        return _get_mail_preferences_file()
+
+
+def _set_mail_preferences_postgres(database_url: str, auto_send_good_reviews: bool) -> None:
+    try:
+        import psycopg
+    except ImportError:
+        _set_mail_preferences_file(auto_send_good_reviews)
+        return
+
+    try:
+        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mail_preferences (
+                        id TEXT PRIMARY KEY DEFAULT 'default',
+                        auto_send_good_reviews BOOLEAN NOT NULL DEFAULT FALSE,
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    INSERT INTO mail_preferences (id, auto_send_good_reviews, updated_at)
+                    VALUES ('default', %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        auto_send_good_reviews = EXCLUDED.auto_send_good_reviews,
+                        updated_at = NOW()
+                    """,
+                    (auto_send_good_reviews,),
+                )
+                conn.commit()
+    except Exception as e:
+        logger.warning("Failed to set mail preferences in Postgres: %s", e)
+        _set_mail_preferences_file(auto_send_good_reviews)

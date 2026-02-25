@@ -296,3 +296,22 @@ class NotificationsResponse(BaseModel):
     error: str | None = None
     notifications: list[NotificationItem] = Field(default_factory=list)
     count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Mail settings (persisted preferences)
+# ---------------------------------------------------------------------------
+
+
+class MailSettingsResponse(BaseModel):
+    """Response schema for GET /api/mail/settings."""
+
+    status: Literal["ok", "error"]
+    error: str | None = None
+    auto_send_good_reviews: bool = False
+
+
+class MailSettingsUpdateRequest(BaseModel):
+    """Request body for POST /api/mail/settings."""
+
+    auto_send_good_reviews: bool = Field(description="If True, agent sends replies for good reviews (rating > 3) without owner approval.")
