@@ -29,7 +29,7 @@ class NotificationStore:
             logger.warning("psycopg not available; notification store disabled")
             return
         try:
-            with psycopg.connect(self._db_url) as conn:
+            with psycopg.connect(self._db_url, prepare_threshold=0) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
@@ -73,7 +73,7 @@ class NotificationStore:
         try:
             import psycopg
 
-            with psycopg.connect(self._db_url) as conn:
+            with psycopg.connect(self._db_url, prepare_threshold=0) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT 1 FROM mail_notifications WHERE email_id = %s AND status = 'pending' LIMIT 1",
@@ -118,7 +118,7 @@ class NotificationStore:
             import psycopg
             from psycopg.types.json import Jsonb
 
-            with psycopg.connect(self._db_url) as conn:
+            with psycopg.connect(self._db_url, prepare_threshold=0) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
@@ -158,7 +158,7 @@ class NotificationStore:
         try:
             import psycopg
 
-            with psycopg.connect(self._db_url) as conn:
+            with psycopg.connect(self._db_url, prepare_threshold=0) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
@@ -202,7 +202,7 @@ class NotificationStore:
         try:
             import psycopg
 
-            with psycopg.connect(self._db_url) as conn:
+            with psycopg.connect(self._db_url, prepare_threshold=0) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
@@ -233,7 +233,7 @@ class NotificationStore:
         try:
             import psycopg
 
-            with psycopg.connect(self._db_url) as conn:
+            with psycopg.connect(self._db_url, prepare_threshold=0) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "UPDATE mail_notifications SET status = %s WHERE id = %s AND status = 'pending'",
