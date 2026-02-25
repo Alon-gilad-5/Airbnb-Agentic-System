@@ -75,19 +75,87 @@
     .badge-bad { background: #fee2e2; color: var(--danger); }
     .badge-good { background: #dcfce7; color: var(--success); }
     .badge-demo { background: #fef3c7; color: var(--warn); }
-    .email-list { display: grid; gap: 12px; }
-    .email-item {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
-      background: #fcfeff;
-      transition: box-shadow 0.15s;
+    .badge-count {
+      background: var(--danger);
+      color: #fff;
+      border-radius: 50%;
+      min-width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0 5px;
     }
-    .email-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .email-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
-    .email-subject { font-weight: 600; font-size: 1rem; }
-    .email-meta { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
-    .email-snippet { margin-top: 6px; font-size: 0.9rem; color: var(--ink); }
+
+    /* Connection indicator */
+    .conn-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .conn-dot.connected { background: var(--success); }
+    .conn-dot.reconnecting { background: var(--warn); animation: pulse 1.2s infinite; }
+    .conn-dot.disconnected { background: var(--muted); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* Notification cards */
+    .notif-list { display: grid; gap: 12px; }
+    .notif-card {
+      border-radius: 12px;
+      padding: 14px 14px 14px 18px;
+      background: #fcfeff;
+      transition: box-shadow 0.15s, opacity 0.3s, max-height 0.4s;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .notif-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .notif-card.border-urgent { border-left: 5px solid var(--danger); border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .notif-card.border-owner { border-left: 5px solid var(--warn); border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .notif-card.border-info { border-left: 5px solid var(--accent2); border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .notif-card.removing {
+      opacity: 0;
+      max-height: 0;
+      padding: 0 14px 0 18px;
+      margin: 0;
+      overflow: hidden;
+    }
+    .notif-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .notif-title { font-weight: 600; font-size: 1rem; flex: 1; }
+    .notif-meta { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    .notif-summary {
+      margin-top: 6px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .notif-dismiss {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 6px;
+      line-height: 1;
+    }
+    .notif-dismiss:hover { background: var(--bg); color: var(--ink); }
+
+    /* Expanded detail area */
+    .notif-detail {
+      display: none;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .notif-card.expanded .notif-detail { display: block; }
+    .notif-snippet { font-size: 0.9rem; color: var(--ink); margin-bottom: 10px; }
+
+    /* Action UI within notifications */
     .email-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .rating-group { display: flex; gap: 4px; }
     .rating-btn {
@@ -112,24 +180,6 @@
       resize: vertical;
       margin-top: 6px;
     }
-    pre {
-      background: #f8fbfe;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin: 8px 0 0;
-    }
-    .steps { display: grid; gap: 10px; }
-    .step {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
-      background: #fcfeff;
-    }
-    .step h3 { margin: 0 0 6px 0; font-size: 1rem; }
     .draft-box {
       background: #f0fdf4;
       border: 1px solid #bbf7d0;
@@ -152,12 +202,67 @@
     .banner-owner { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
     .banner-auto { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
     .banner-info { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+
+    /* Steps & results */
+    pre {
+      background: #f8fbfe;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 8px 0 0;
+    }
+    .steps { display: grid; gap: 10px; }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fcfeff;
+    }
+    .step h3 { margin: 0 0 6px 0; font-size: 1rem; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+    /* Inbox fallback section */
+    .email-list { display: grid; gap: 12px; }
+    .email-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fcfeff;
+      transition: box-shadow 0.15s;
+    }
+    .email-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .email-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .email-subject { font-weight: 600; font-size: 1rem; }
+    .email-meta { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    .email-snippet { margin-top: 6px; font-size: 0.9rem; color: var(--ink); }
     .agent-summary {
       margin-top: 6px;
       font-size: 0.88rem;
       color: var(--muted);
       line-height: 1.5;
     }
+
+    .inbox-toggle {
+      background: none;
+      border: none;
+      color: var(--accent2);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 4px 0;
+      text-decoration: underline;
+    }
+    .inbox-toggle:hover { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -167,22 +272,23 @@
         <a href="/">Reviews Console</a>
         <a href="/mail">Mail Console</a>
       </div>
-      <h1>Mail Agent Console</h1>
-      <p>Triage Airbnb inbox emails, review drafts, and submit owner decisions.</p>
-    </section>
-
-    <section class="card">
-      <div style="display:flex; gap:10px; align-items:center;">
-        <button id="refreshBtn">Refresh Inbox</button>
-        <span id="status" class="muted">Idle</span>
-        <span id="demoTag" class="badge badge-demo" style="display:none;">Demo Mode</span>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <h1>Mail Agent Console</h1>
+        <span id="notifCount" class="badge-count" style="display:none;">0</span>
       </div>
+      <p>
+        <span class="conn-dot disconnected" id="connDot"></span>
+        <span id="connLabel" class="muted">Connecting...</span>
+      </p>
     </section>
 
     <section class="card">
-      <h2>Inbox</h2>
-      <div id="inboxList" class="email-list">
-        <p class="muted">Click "Refresh Inbox" to load emails.</p>
+      <h2>Notifications</h2>
+      <div id="notifList" class="notif-list">
+        <div class="empty-state" id="emptyState">
+          <div class="icon">&#9993;</div>
+          <p>Connecting to notification stream...</p>
+        </div>
       </div>
     </section>
 
@@ -192,24 +298,60 @@
       <h3 style="margin-top:12px;">Steps</h3>
       <div id="actionSteps" class="steps"></div>
     </section>
+
+    <section class="card">
+      <button class="inbox-toggle" id="inboxToggle">Load full inbox</button>
+      <div id="inboxSection" style="display:none; margin-top:12px;">
+        <h2>Full Inbox</h2>
+        <div id="inboxList" class="email-list">
+          <p class="muted">Loading...</p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
-    const refreshBtn = document.getElementById("refreshBtn");
-    const statusEl = document.getElementById("status");
-    const demoTag = document.getElementById("demoTag");
-    const inboxList = document.getElementById("inboxList");
+    const notifList = document.getElementById("notifList");
+    const emptyState = document.getElementById("emptyState");
+    const notifCountEl = document.getElementById("notifCount");
+    const connDot = document.getElementById("connDot");
+    const connLabel = document.getElementById("connLabel");
     const resultSection = document.getElementById("resultSection");
     const actionResult = document.getElementById("actionResult");
     const actionSteps = document.getElementById("actionSteps");
+    const inboxToggle = document.getElementById("inboxToggle");
+    const inboxSection = document.getElementById("inboxSection");
+    const inboxList = document.getElementById("inboxList");
 
-    let inboxItems = [];
+    const notifications = {};
     const emailActionCache = {};
+    let inboxItems = [];
 
     const COMMON_ISSUES = [
       "Noise complaints", "Cleanliness", "Rule violations",
       "Late checkout", "Property damage", "Communication issues",
     ];
+
+    // ------------------------------------------------------------------
+    // Utilities
+    // ------------------------------------------------------------------
+
+    function escHtml(str) {
+      const d = document.createElement("div");
+      d.textContent = str || "";
+      return d.innerHTML;
+    }
+
+    function timeAgo(isoStr) {
+      if (!isoStr) return "";
+      const diff = Date.now() - new Date(isoStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.floor(hrs / 24)}d ago`;
+    }
 
     function categoryBadge(cat) {
       const map = {
@@ -220,7 +362,7 @@
         non_airbnb: "badge-non-airbnb",
       };
       const cls = map[cat] || "badge-unsupported";
-      return `<span class="badge ${cls}">${cat.replace(/_/g, " ")}</span>`;
+      return `<span class="badge ${cls}">${(cat || "").replace(/_/g, " ")}</span>`;
     }
 
     function ratingBadge(rating) {
@@ -229,114 +371,58 @@
       return `<span class="badge ${cls}">${rating}/5</span>`;
     }
 
-    function renderSteps(steps, container) {
-      container.innerHTML = "";
-      if (!steps || !steps.length) {
-        container.textContent = "No steps recorded.";
-        return;
-      }
-      for (const step of steps) {
-        const div = document.createElement("div");
-        div.className = "step";
-        div.innerHTML = `
-          <h3>${step.module}</h3>
-          <strong>prompt</strong>
-          <pre>${JSON.stringify(step.prompt, null, 2)}</pre>
-          <strong>response</strong>
-          <pre>${JSON.stringify(step.response, null, 2)}</pre>`;
-        container.appendChild(div);
+    function updateNotifCount() {
+      const count = Object.keys(notifications).length;
+      notifCountEl.textContent = count;
+      notifCountEl.style.display = count > 0 ? "inline-flex" : "none";
+      document.title = count > 0 ? `(${count}) Mail Agent Console` : "Mail Agent Console";
+      emptyState.style.display = count > 0 ? "none" : "block";
+      if (count === 0) {
+        emptyState.innerHTML = '<div class="icon">&#10003;</div><p>No pending notifications. You\'re all caught up!</p>';
       }
     }
 
-    function renderAgentBanner(action) {
-      if (!action) return "";
-      const reqOwner = action.requires_owner;
+    // ------------------------------------------------------------------
+    // Notification card rendering
+    // ------------------------------------------------------------------
+
+    function getBorderClass(notif) {
+      const action = notif.action_data || {};
+      const importance = action.importance || "";
+      const category = notif.category || "";
+      const rating = notif.rating;
+      if (importance === "high" || (category === "new_property_review" && rating != null && rating <= 2)) {
+        return "border-urgent";
+      }
+      return "border-owner";
+    }
+
+    function getAgentSummary(notif) {
+      const action = notif.action_data || {};
       const emailAction = action.action || "";
       const importance = action.importance || "";
-      const category = action.category || "";
-      const draft = action.draft || "";
       const reason = action.reason || "";
-
-      let bannerClass = "banner-info";
-      let bannerText = "";
-
-      if (importance === "high" || (category === "new_property_review" && action.rating != null && action.rating <= 2)) {
-        bannerClass = "banner-urgent";
-        bannerText = "Urgent — requires immediate attention";
-      } else if (reqOwner) {
-        bannerClass = "banner-owner";
-        bannerText = "Owner action needed";
-      } else if (emailAction === "draft_reply" || emailAction === "auto_thank") {
-        bannerClass = "banner-auto";
-        bannerText = "Agent handled automatically";
-      } else if (emailAction === "no_action") {
-        bannerClass = "banner-info";
-        bannerText = "No action required";
-      } else {
-        bannerClass = "banner-info";
-        bannerText = `Agent decision: ${emailAction.replace(/_/g, " ")}`;
-      }
-
-      let html = `<div class="action-banner ${bannerClass}">${escHtml(bannerText)}</div>`;
-
-      let details = [];
-      if (emailAction) details.push(`Action: ${emailAction.replace(/_/g, " ")}`);
-      if (importance) details.push(`Importance: ${importance}`);
-      if (reason) details.push(`Reason: ${reason}`);
-      if (details.length) {
-        html += `<div class="agent-summary">${escHtml(details.join(" · "))}</div>`;
-      }
-
-      if (draft) {
-        const preview = draft.length > 200 ? draft.substring(0, 200) + "..." : draft;
-        html += `<div class="draft-box"><strong>Draft reply:</strong><br>${escHtml(preview)}</div>`;
-      }
-
-      return html;
+      const parts = [];
+      if (emailAction) parts.push(`Action: ${emailAction.replace(/_/g, " ")}`);
+      if (importance) parts.push(`Importance: ${importance}`);
+      if (reason) parts.push(reason);
+      return parts.join(" \u00b7 ");
     }
 
-    function renderInbox(items, actionsByEmail) {
-      actionsByEmail = actionsByEmail || {};
-      inboxItems = items || [];
-      inboxList.innerHTML = "";
-      if (!items.length) {
-        inboxList.innerHTML = '<p class="muted">No emails found.</p>';
-        return;
+    function renderNotifActions(notif) {
+      const action = notif.action_data || {};
+      const category = notif.category;
+      const emailId = notif.email_id;
+
+      if (category === "leave_review_request") {
+        return renderLeaveReviewActions({ email_id: emailId });
+      } else if (category === "new_property_review") {
+        const item = { email_id: emailId, rating: notif.rating };
+        return renderPropertyReviewActions(item, action);
+      } else if (category === "guest_message") {
+        return renderGuestMessageActions({ email_id: emailId }, action);
       }
-      for (const item of items) {
-        if (item.category === "non_airbnb") continue;
-
-        const div = document.createElement("div");
-        div.className = "email-item";
-        div.dataset.emailId = item.email_id;
-
-        const action = actionsByEmail[item.email_id];
-        let html = `
-          <div class="email-header">
-            <span class="email-subject">${escHtml(item.subject)}</span>
-            <span>${categoryBadge(item.category)} ${ratingBadge(item.rating)}</span>
-          </div>
-          <div class="email-meta">
-            From: ${escHtml(item.sender)} &middot; ${escHtml(item.date)}
-            ${item.guest_name ? " &middot; Guest: " + escHtml(item.guest_name) : ""}
-          </div>
-          <div class="email-snippet">${escHtml(item.snippet)}</div>`;
-
-        html += renderAgentBanner(action);
-
-        if (item.category === "leave_review_request") {
-          html += renderLeaveReviewActions(item);
-        } else if (item.category === "new_property_review") {
-          html += renderPropertyReviewActions(item, action);
-        } else if (item.category === "guest_message") {
-          html += renderGuestMessageActions(item, action);
-        }
-
-        div.innerHTML = html;
-        inboxList.appendChild(div);
-      }
-
-      bindActionHandlers();
+      return "";
     }
 
     function renderLeaveReviewActions(item) {
@@ -406,20 +492,101 @@
     }
 
     function renderGuestMessageActions(item, action) {
-      return `<div class="email-actions">
+      const draft = action && action.draft;
+      let html = `<div class="email-actions">
         <button class="run-reply-btn" data-email-id="${item.email_id}">Process Message</button>
       </div>`;
+      if (draft) {
+        html += `<div class="draft-box"><strong>Draft reply:</strong><br>${escHtml(draft)}</div>`;
+      }
+      return html;
     }
 
-    function bindActionHandlers() {
-      document.querySelectorAll(".rating-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+    function addNotifCard(notif) {
+      if (notifications[notif.id]) return;
+      notifications[notif.id] = notif;
+      emailActionCache[notif.email_id] = notif.action_data || {};
+
+      const card = document.createElement("div");
+      card.className = `notif-card ${getBorderClass(notif)}`;
+      card.dataset.notifId = notif.id;
+      card.dataset.emailId = notif.email_id;
+
+      const summary = getAgentSummary(notif);
+      const draft = (notif.action_data || {}).draft || "";
+      const draftPreview = draft ? (draft.length > 150 ? draft.substring(0, 150) + "..." : draft) : "";
+
+      card.innerHTML = `
+        <div class="notif-header">
+          <div style="flex:1;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="notif-title">${escHtml(notif.subject)}</span>
+              ${categoryBadge(notif.category)}
+              ${ratingBadge(notif.rating)}
+            </div>
+            <div class="notif-meta">
+              From: ${escHtml(notif.sender)}
+              ${notif.guest_name ? " \u00b7 Guest: " + escHtml(notif.guest_name) : ""}
+              ${notif.created_at ? " \u00b7 " + timeAgo(notif.created_at) : ""}
+            </div>
+          </div>
+          <button class="notif-dismiss" title="Dismiss">&times;</button>
+        </div>
+        ${summary ? `<div class="notif-summary">${escHtml(summary)}</div>` : ""}
+        ${draftPreview ? `<div class="draft-box" style="margin-top:8px;"><strong>Draft:</strong> ${escHtml(draftPreview)}</div>` : ""}
+        <div class="notif-detail">
+          <div class="notif-snippet">${escHtml(notif.snippet)}</div>
+          ${renderNotifActions(notif)}
+        </div>`;
+
+      card.querySelector(".notif-dismiss").addEventListener("click", (e) => {
+        e.stopPropagation();
+        dismissNotification(notif.id, card);
+      });
+
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("button") || e.target.closest("textarea") || e.target.closest("input") || e.target.closest("label")) return;
+        card.classList.toggle("expanded");
+        if (card.classList.contains("expanded")) {
+          bindActionHandlersInCard(card);
+        }
+      });
+
+      const firstEmpty = notifList.querySelector(".empty-state");
+      if (firstEmpty) {
+        notifList.insertBefore(card, firstEmpty);
+      } else {
+        notifList.prepend(card);
+      }
+      updateNotifCount();
+    }
+
+    function removeNotifCard(notifId) {
+      const card = notifList.querySelector(`[data-notif-id="${notifId}"]`);
+      if (card) {
+        card.classList.add("removing");
+        setTimeout(() => { card.remove(); }, 400);
+      }
+      delete notifications[notifId];
+      updateNotifCount();
+    }
+
+    // ------------------------------------------------------------------
+    // Action handlers (bound per-card when expanded)
+    // ------------------------------------------------------------------
+
+    function bindActionHandlersInCard(card) {
+      card.querySelectorAll(".rating-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           const group = btn.closest(".rating-group");
           group.querySelectorAll(".rating-btn").forEach(b => b.classList.remove("selected"));
           btn.classList.add("selected");
           const emailId = group.dataset.emailId;
           const rating = parseInt(btn.dataset.rating);
-          const issuesDiv = document.querySelector(`.issues-group[data-email-id="${emailId}"]`);
+          const issuesDiv = card.querySelector(`.issues-group[data-email-id="${emailId}"]`);
           if (rating < 3) {
             issuesDiv.style.display = "block";
           } else {
@@ -429,59 +596,70 @@
         });
       });
 
-      document.querySelectorAll(".submit-review-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".submit-review-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           const emailId = btn.dataset.emailId;
-          const group = document.querySelector(`.rating-group[data-email-id="${emailId}"]`);
-          const selected = group.querySelector(".rating-btn.selected");
+          const group = card.querySelector(`.rating-group[data-email-id="${emailId}"]`);
+          const selected = group ? group.querySelector(".rating-btn.selected") : null;
           const rating = selected ? parseInt(selected.dataset.rating) : 1;
-          const issuesDiv = document.querySelector(`.issues-group[data-email-id="${emailId}"]`);
+          const issuesDiv = card.querySelector(`.issues-group[data-email-id="${emailId}"]`);
           const issues = Array.from(issuesDiv.querySelectorAll("input:checked")).map(cb => cb.value);
           const freeText = issuesDiv.querySelector("textarea").value.trim() || null;
           submitMailAction(emailId, "rate_guest", { rating, issues, free_text: freeText });
         });
       });
 
-      document.querySelectorAll(".approve-response-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".generate-reply-options-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
         });
       });
 
-      document.querySelectorAll(".generate-reply-options-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
-        });
-      });
-
-      document.querySelectorAll(".reply-style-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".reply-style-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           const emailId = btn.dataset.emailId;
           const replyStyle = btn.dataset.replyStyle;
-          const instructionsEl = document.querySelector(`.owner-instructions[data-email-id="${emailId}"]`);
+          const instructionsEl = card.querySelector(`.owner-instructions[data-email-id="${emailId}"]`);
           const ownerInstructions = instructionsEl ? instructionsEl.value.trim() : null;
           submitMailAction(emailId, "approve_response", { reply_style: replyStyle, owner_instructions: ownerInstructions || undefined });
         });
       });
 
-      document.querySelectorAll(".dont-reply-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".dont-reply-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           submitMailAction(btn.dataset.emailId, "don_t_reply", { don_t_reply: true });
         });
       });
 
-      document.querySelectorAll(".approve-send-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".approve-send-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           const emailId = btn.dataset.emailId;
           const action = emailActionCache[emailId];
           if (!action || !action.thread_id || !action.reply_to) {
-            statusEl.textContent = "Missing reply metadata; try generating options again.";
+            resultSection.style.display = "block";
+            actionResult.textContent = "Missing reply metadata; try generating options again.";
             return;
           }
-          const draftEl = document.querySelector(`.draft-edit[data-email-id="${emailId}"]`);
+          const draftEl = card.querySelector(`.draft-edit[data-email-id="${emailId}"]`);
           const draftText = draftEl ? draftEl.value.trim() : (action.draft || "");
           if (!draftText) {
-            statusEl.textContent = "Draft is empty.";
+            resultSection.style.display = "block";
+            actionResult.textContent = "Draft is empty.";
             return;
           }
           submitMailAction(emailId, "approve_response", {
@@ -496,23 +674,32 @@
         });
       });
 
-      document.querySelectorAll(".run-response-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".run-response-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
         });
       });
 
-      document.querySelectorAll(".run-reply-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
+      card.querySelectorAll(".run-reply-btn").forEach(btn => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
           submitMailAction(btn.dataset.emailId, "approve_response", { approved: true });
         });
       });
     }
 
+    // ------------------------------------------------------------------
+    // API calls
+    // ------------------------------------------------------------------
+
     async function submitMailAction(emailId, actionType, extra) {
-      statusEl.textContent = "Processing...";
       resultSection.style.display = "block";
-      actionResult.textContent = "Working...";
+      actionResult.textContent = "Processing...";
       actionSteps.innerHTML = "";
 
       const body = { email_id: emailId, action_type: actionType, ...extra };
@@ -526,57 +713,216 @@
         const data = await res.json();
         actionResult.textContent = data.response ?? `(error) ${data.error}`;
         renderSteps(data.steps || [], actionSteps);
-        statusEl.textContent = `Action complete (${data.status})`;
 
         if (data.mail_actions && data.mail_actions.length) {
           const match = data.mail_actions.find(a => a.email_id === emailId);
           if (match) {
             emailActionCache[emailId] = match;
-            renderInbox(inboxItems, emailActionCache);
           }
         }
       } catch (err) {
         actionResult.textContent = String(err);
-        statusEl.textContent = "Action failed";
       }
     }
 
-    refreshBtn.addEventListener("click", async () => {
-      refreshBtn.disabled = true;
-      statusEl.textContent = "Loading & processing inbox...";
+    async function dismissNotification(notifId, card) {
+      card.classList.add("removing");
+      try {
+        await fetch(`/api/mail/notifications/${notifId}/dismiss`, { method: "POST" });
+      } catch (e) { /* best effort */ }
+      setTimeout(() => {
+        card.remove();
+        delete notifications[notifId];
+        updateNotifCount();
+      }, 400);
+    }
 
+    function renderSteps(steps, container) {
+      container.innerHTML = "";
+      if (!steps || !steps.length) {
+        container.textContent = "No steps recorded.";
+        return;
+      }
+      for (const step of steps) {
+        const div = document.createElement("div");
+        div.className = "step";
+        div.innerHTML = `
+          <h3>${escHtml(step.module)}</h3>
+          <strong>prompt</strong>
+          <pre>${JSON.stringify(step.prompt, null, 2)}</pre>
+          <strong>response</strong>
+          <pre>${JSON.stringify(step.response, null, 2)}</pre>`;
+        container.appendChild(div);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Load existing notifications
+    // ------------------------------------------------------------------
+
+    async function loadNotifications() {
+      try {
+        const res = await fetch("/api/mail/notifications");
+        const data = await res.json();
+        if (data.status === "ok" && data.notifications) {
+          for (const notif of data.notifications.reverse()) {
+            addNotifCard(notif);
+          }
+        }
+        updateNotifCount();
+      } catch (e) {
+        console.error("Failed to load notifications:", e);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // SSE connection
+    // ------------------------------------------------------------------
+
+    function connectSSE() {
+      const evtSource = new EventSource("/api/mail/notifications/stream");
+
+      evtSource.onopen = () => {
+        connDot.className = "conn-dot connected";
+        connLabel.textContent = "Live — listening for new emails";
+      };
+
+      evtSource.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data);
+          if (event.type === "new" && event.notification) {
+            addNotifCard(event.notification);
+          } else if (event.type === "handled" && event.notification_id) {
+            removeNotifCard(event.notification_id);
+          } else if (event.type === "dismissed" && event.notification_id) {
+            removeNotifCard(event.notification_id);
+          }
+        } catch (err) {
+          // heartbeat or malformed — ignore
+        }
+      };
+
+      evtSource.onerror = () => {
+        connDot.className = "conn-dot reconnecting";
+        connLabel.textContent = "Reconnecting...";
+      };
+
+      return evtSource;
+    }
+
+    // ------------------------------------------------------------------
+    // Full inbox fallback
+    // ------------------------------------------------------------------
+
+    function renderAgentBanner(action) {
+      if (!action) return "";
+      const reqOwner = action.requires_owner;
+      const emailAction = action.action || "";
+      const importance = action.importance || "";
+      const category = action.category || "";
+      const draft = action.draft || "";
+      const reason = action.reason || "";
+
+      let bannerClass = "banner-info";
+      let bannerText = "";
+
+      if (importance === "high" || (category === "new_property_review" && action.rating != null && action.rating <= 2)) {
+        bannerClass = "banner-urgent";
+        bannerText = "Urgent \u2014 requires immediate attention";
+      } else if (reqOwner) {
+        bannerClass = "banner-owner";
+        bannerText = "Owner action needed";
+      } else if (emailAction === "draft_reply" || emailAction === "auto_thank") {
+        bannerClass = "banner-auto";
+        bannerText = "Agent handled automatically";
+      } else if (emailAction === "no_action") {
+        bannerClass = "banner-info";
+        bannerText = "No action required";
+      } else {
+        bannerClass = "banner-info";
+        bannerText = `Agent decision: ${emailAction.replace(/_/g, " ")}`;
+      }
+
+      let html = `<div class="action-banner ${bannerClass}">${escHtml(bannerText)}</div>`;
+      let details = [];
+      if (emailAction) details.push(`Action: ${emailAction.replace(/_/g, " ")}`);
+      if (importance) details.push(`Importance: ${importance}`);
+      if (reason) details.push(`Reason: ${reason}`);
+      if (details.length) {
+        html += `<div class="agent-summary">${escHtml(details.join(" \u00b7 "))}</div>`;
+      }
+      if (draft) {
+        const preview = draft.length > 200 ? draft.substring(0, 200) + "..." : draft;
+        html += `<div class="draft-box"><strong>Draft reply:</strong><br>${escHtml(preview)}</div>`;
+      }
+      return html;
+    }
+
+    function renderInbox(items, actionsByEmail) {
+      actionsByEmail = actionsByEmail || {};
+      inboxItems = items || [];
+      inboxList.innerHTML = "";
+      if (!items.length) {
+        inboxList.innerHTML = '<p class="muted">No emails found.</p>';
+        return;
+      }
+      for (const item of items) {
+        if (item.category === "non_airbnb") continue;
+        const div = document.createElement("div");
+        div.className = "email-item";
+        div.dataset.emailId = item.email_id;
+        const action = actionsByEmail[item.email_id];
+        div.innerHTML = `
+          <div class="email-header">
+            <span class="email-subject">${escHtml(item.subject)}</span>
+            <span>${categoryBadge(item.category)} ${ratingBadge(item.rating)}</span>
+          </div>
+          <div class="email-meta">
+            From: ${escHtml(item.sender)} \u00b7 ${escHtml(item.date)}
+            ${item.guest_name ? " \u00b7 Guest: " + escHtml(item.guest_name) : ""}
+          </div>
+          <div class="email-snippet">${escHtml(item.snippet)}</div>
+          ${renderAgentBanner(action)}`;
+        inboxList.appendChild(div);
+      }
+    }
+
+    let inboxLoaded = false;
+    inboxToggle.addEventListener("click", async () => {
+      if (inboxLoaded) {
+        inboxSection.style.display = inboxSection.style.display === "none" ? "block" : "none";
+        return;
+      }
+      inboxSection.style.display = "block";
+      inboxToggle.textContent = "Loading...";
       try {
         const res = await fetch("/api/mail/inbox");
         const data = await res.json();
-        if (data.demo_mode) demoTag.style.display = "inline-block";
-        else demoTag.style.display = "none";
         if (data.status === "ok") {
           const actions = data.mail_actions || [];
+          const actionMap = {};
           for (const act of actions) {
-            if (act.email_id) emailActionCache[act.email_id] = act;
+            if (act.email_id) actionMap[act.email_id] = act;
           }
-          renderInbox(data.items || [], emailActionCache);
-          const needsOwner = actions.filter(a => a.requires_owner).length;
-          let statusMsg = `Loaded ${(data.items || []).length} email(s), processed ${actions.length} action(s)`;
-          if (needsOwner) statusMsg += ` — ${needsOwner} need your attention`;
-          statusEl.textContent = statusMsg;
+          renderInbox(data.items || [], actionMap);
+          inboxLoaded = true;
+          inboxToggle.textContent = "Hide full inbox";
         } else {
-          inboxList.innerHTML = `<p style="color:var(--danger)">${data.error}</p>`;
-          statusEl.textContent = "Error";
+          inboxList.innerHTML = `<p style="color:var(--danger)">${escHtml(data.error)}</p>`;
+          inboxToggle.textContent = "Load full inbox";
         }
       } catch (err) {
-        inboxList.innerHTML = `<p style="color:var(--danger)">${err}</p>`;
-        statusEl.textContent = "Failed";
-      } finally {
-        refreshBtn.disabled = false;
+        inboxList.innerHTML = `<p style="color:var(--danger)">${escHtml(String(err))}</p>`;
+        inboxToggle.textContent = "Load full inbox";
       }
     });
 
-    function escHtml(str) {
-      const d = document.createElement("div");
-      d.textContent = str || "";
-      return d.innerHTML;
-    }
+    // ------------------------------------------------------------------
+    // Init
+    // ------------------------------------------------------------------
+
+    loadNotifications();
+    connectSSE();
   </script>
 </body>
 </html>

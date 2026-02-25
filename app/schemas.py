@@ -266,3 +266,33 @@ class MailActionResponse(BaseModel):
         default=None,
         description="Actions from pipeline (reply_options, draft, thread_id, etc.) for UI",
     )
+
+
+# ---------------------------------------------------------------------------
+# Mail notification schemas
+# ---------------------------------------------------------------------------
+
+
+class NotificationItem(BaseModel):
+    """A single mail notification requiring owner attention."""
+
+    id: str
+    email_id: str
+    created_at: str | None
+    category: str
+    subject: str
+    sender: str
+    guest_name: str | None = None
+    rating: int | None = None
+    snippet: str
+    action_data: dict[str, Any] = Field(default_factory=dict)
+    status: str = "pending"
+
+
+class NotificationsResponse(BaseModel):
+    """Response schema for mail notifications list."""
+
+    status: Literal["ok", "error"]
+    error: str | None = None
+    notifications: list[NotificationItem] = Field(default_factory=list)
+    count: int = 0

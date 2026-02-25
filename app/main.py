@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import csv
 import json
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -37,6 +38,8 @@ from app.schemas import (
     MarketAlertResponse,
     MarketWatchAlertsResponse,
     MarketWatchRunResponse,
+    NotificationItem,
+    NotificationsResponse,
     StepLog,
     ThresholdLabelCandidate,
     ThresholdLabelCase,
@@ -54,6 +57,7 @@ from app.services.embeddings import EmbeddingService
 from app.services.pinecone_retriever import PineconeRetriever
 from app.services.gmail_service import GmailService
 from app.services.mail_push_state import get_owner_choice, get_push_state, set_owner_choice, set_push_state
+from app.services.notification_store import NotificationStore
 from app.services.web_review_ingest import WebReviewIngestService
 from app.services.web_review_scraper import PlaywrightReviewScraper
 
@@ -170,6 +174,7 @@ mail_agent = MailAgent(
         auto_send_enabled=settings.mail_auto_send_enabled,
     ),
 )
+notification_store = NotificationStore(database_url=settings.database_url)
 
 router_agent = RouterAgent()
 agent_registry: dict[str, Agent] = {
@@ -959,6 +964,10 @@ def mail_inbox() -> MailInboxResponse:
                 }
                 result = mail_agent.run_on_messages(messages, context=context)
                 mail_actions = result.mail_actions
+                if mail_actions:
+                    for action in mail_actions:
+                        if action.get("requires_owner"):
+                            notification_store.add_notification(action)
         except Exception as proc_exc:
             logger.warning("mail inbox auto-process failed: %s", proc_exc)
 
@@ -976,6 +985,62 @@ def mail_inbox() -> MailInboxResponse:
             items=[],
             demo_mode=gmail_service.is_demo_mode,
         )
+
+
+# ---------------------------------------------------------------------------
+# Mail notification endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/mail/notifications", response_model=NotificationsResponse)
+def mail_notifications() -> NotificationsResponse:
+    """Return all pending notifications that need owner attention."""
+    try:
+        pending = notification_store.get_pending()
+        items = [NotificationItem(**n) for n in pending]
+        return NotificationsResponse(status="ok", notifications=items, count=len(items))
+    except Exception as exc:
+        return NotificationsResponse(
+            status="error", error=f"{type(exc).__name__}: {exc}"
+        )
+
+
+@app.get("/api/mail/notifications/stream")
+async def mail_notifications_stream() -> StreamingResponse:
+    """SSE endpoint that pushes notification events to the browser in real-time."""
+
+    async def event_generator():
+        queue = notification_store.subscribe()
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            notification_store.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/mail/notifications/{notification_id}/dismiss")
+def dismiss_notification(notification_id: str) -> dict[str, str | bool]:
+    """Dismiss a notification without taking action."""
+    ok = notification_store.dismiss(notification_id)
+    if ok:
+        return {"status": "ok", "dismissed": True}
+    return {"status": "error", "error": "Notification not found or already handled"}
 
 
 @app.post("/api/mail/push")
@@ -1026,6 +1091,9 @@ async def mail_push(
         if messages:
             result = mail_agent.run_on_messages(messages)
             actions = result.mail_actions or []
+            for action in actions:
+                if action.get("requires_owner"):
+                    notification_store.add_notification(action)
             if any(a.get("requires_owner") for a in actions):
                 _notify_owner_for_mail_actions(
                     actions,
@@ -1073,6 +1141,7 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
     try:
         if payload.don_t_reply:
             set_owner_choice(settings.database_url, payload.email_id, "don_t_reply")
+            notification_store.mark_handled_by_email(payload.email_id)
             return MailActionResponse(
                 status="ok",
                 error=None,
@@ -1107,6 +1176,7 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
                     response=None,
                     steps=[],
                 )
+            notification_store.mark_handled_by_email(payload.email_id)
             return MailActionResponse(
                 status="ok",
                 error=None,
@@ -1147,6 +1217,7 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
             owner_action=owner_action,
             context=context,
         )
+        notification_store.mark_handled_by_email(payload.email_id)
         return MailActionResponse(
             status="ok",
             error=None,
