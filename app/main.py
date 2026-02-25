@@ -1230,7 +1230,6 @@ def mail_action(payload: MailActionRequest) -> MailActionResponse:
             owner_action=owner_action,
             context=context,
         )
-        notification_store.mark_handled_by_email(payload.email_id)
         return MailActionResponse(
             status="ok",
             error=None,

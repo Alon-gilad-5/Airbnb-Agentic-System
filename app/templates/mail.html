@@ -497,7 +497,18 @@
         <button class="run-reply-btn" data-email-id="${item.email_id}">Process Message</button>
       </div>`;
       if (draft) {
-        html += `<div class="draft-box"><strong>Draft reply:</strong><br>${escHtml(draft)}</div>`;
+        html += `<div class="draft-box">
+          <strong>Draft:</strong>
+          <textarea class="draft-edit action-text" data-email-id="${item.email_id}" rows="4">${escHtml(draft)}</textarea>
+          <div style="margin-top:8px;">
+            <button class="dont-reply-btn secondary" data-email-id="${item.email_id}" data-dont-reply="1">Don't reply</button>
+            ${
+              action && action.thread_id && action.reply_to
+                ? `<button class="approve-send-btn" data-email-id="${item.email_id}">Approve and send</button>`
+                : ""
+            }
+          </div>
+        </div>`;
       }
       return html;
     }
