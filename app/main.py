@@ -983,6 +983,13 @@ def mail_ui(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("mail.html", {"request": request})
 
 
+@app.get("/market-watch", response_class=HTMLResponse)
+def market_watch_ui(request: Request) -> HTMLResponse:
+    """Market watch alerts page — shows weather, events, and demand signals."""
+
+    return templates.TemplateResponse("market_watch.html", {"request": request})
+
+
 @app.get("/api/mail/inbox", response_model=MailInboxResponse)
 def mail_inbox() -> MailInboxResponse:
     """Return classified inbox items AND agent-processed actions for the mail agent UI."""
