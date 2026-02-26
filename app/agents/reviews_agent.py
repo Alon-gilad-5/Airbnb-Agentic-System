@@ -690,13 +690,26 @@ class ReviewsPipeline:
             "provided review evidence. If evidence is thin for either side, say so explicitly. "
             "Do not use unsupported broad quantifiers (e.g., many guests, most guests)."
         )
+
+        # Build neighbor availability note for the LLM
+        if not neighbor_relevant:
+            neighbor_note = (
+                "IMPORTANT: No neighbor reviews were found in the database for this topic. "
+                "You MUST start your answer with: 'Note: No review data is available for "
+                "neighboring properties, so a direct comparison is not possible.' "
+                "Then summarize what the owner's reviews say and provide actionable advice."
+            )
+        else:
+            neighbor_note = ""
+
         user_prompt = (
             f"Question:\n{prompt_text}\n\n"
             f"=== YOUR PROPERTY (ID: {property_id}) REVIEWS ===\n{owner_context}\n\n"
             f"=== NEIGHBOR PROPERTIES REVIEWS ===\n{neighbor_context}\n\n"
             f"Owner review count: {len(owner_relevant)}\n"
             f"Neighbor review count: {len(neighbor_relevant)}\n"
-            f"Number of neighbor properties with reviews: {n_neighbor_props_with_reviews}\n\n"
+            f"Number of neighbor properties with reviews: {n_neighbor_props_with_reviews}\n"
+            f"{neighbor_note}\n\n"
             "Confidence policy:\n"
             "- Less than 3 reviews on either side => confidence must be low.\n"
             "- 3+ reviews on both sides => confidence can be medium/high if supported.\n\n"
@@ -737,11 +750,10 @@ class ReviewsPipeline:
         # Cap words for comparison
         llm_answer = _cap_words(llm_answer.strip(), cfg.max_comparison_words)
 
-        # Add low-evidence disclaimer if thin
+        # Let finalize handle the disclaimer — don't double-add here
         disclaimer = None
         if evidence_count <= cfg.thin_evidence_max:
             disclaimer = LOW_EVIDENCE_PREFIX
-            llm_answer = f"{disclaimer}\n\n{llm_answer}"
 
         return {
             "relevant_matches": all_relevant,
