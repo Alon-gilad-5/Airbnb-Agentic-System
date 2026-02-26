@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1150,13 +1150,20 @@ def update_mail_settings(payload: MailSettingsUpdateRequest) -> MailSettingsResp
 
 
 @app.post("/api/mail/push")
-async def mail_push(
+def mail_push(
     request: Request,
     x_gmail_push_secret: str | None = Header(default=None, alias="X-Gmail-Push-Secret"),
+    payload: dict | None = Body(default=None),
 ) -> dict[str, str]:
-    """Gmail push webhook: decode Pub/Sub notification, fetch new messages, run pipeline, notify owner if needed. Always returns 200."""
+    """Gmail push webhook: decode Pub/Sub notification, fetch new messages, run pipeline, notify owner if needed. Always returns 200.
+
+    NOTE: This is intentionally a sync ``def`` (not ``async def``) so that
+    FastAPI runs it in a threadpool worker. The heavy work inside — LLM
+    calls, Gmail API, Postgres — is all synchronous and would block the
+    event loop if this were async, starving other requests like the UI.
+    """
     try:
-        body = await request.json()
+        body = payload or {}
         if not isinstance(body, dict):
             return {"status": "ok"}
         msg = body.get("message", {})
