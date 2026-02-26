@@ -196,6 +196,10 @@ mail_agent = MailAgent(
 )
 notification_store = NotificationStore(database_url=settings.database_url)
 
+# Serialize push webhook processing — the Gmail API client (httplib2) is not
+# thread-safe, so concurrent threadpool workers would corrupt SSL state.
+_push_lock = threading.Lock()
+
 router_agent = RouterAgent()
 agent_registry: dict[str, Agent] = {
     "reviews_agent": ReviewsAgent(
@@ -1187,49 +1191,51 @@ def mail_push(
             return {"status": "ok"}
         if not settings.mail_enabled or not settings.mail_push_enabled:
             return {"status": "ok"}
-        db_url = settings.database_url
-        state = get_push_state(db_url)
-        last_history_id = state.get("history_id") if state else None
-        if not last_history_id:
-            set_push_state(db_url, str(history_id))
-            return {"status": "ok"}
-        # Advance history cursor immediately so concurrent pushes don't
-        # re-fetch the same batch (send_reply triggers another push).
-        set_push_state(db_url, str(history_id))
-        try:
-            messages = gmail_service.list_messages_since_history(last_history_id)
-        except Exception as exc:
-            if "404" in str(exc) or "history" in str(exc).lower():
+        # Serialize Gmail API access — httplib2 is not thread-safe.
+        with _push_lock:
+            db_url = settings.database_url
+            state = get_push_state(db_url)
+            last_history_id = state.get("history_id") if state else None
+            if not last_history_id:
+                set_push_state(db_url, str(history_id))
                 return {"status": "ok"}
-            logger.warning("mail push: list_messages_since_history failed: %s", exc)
-            return {"status": "ok"}
-        if messages:
-            result = mail_agent.run_on_messages(messages)
-            actions = result.mail_actions or []
-            prefs = get_mail_preferences(db_url)
-            auto_send = prefs.get("auto_send_good_reviews", False)
-            auto_send_failed = False
-            actions_needing_notify: list[dict] = []
-            for action in actions:
-                if not action.get("requires_owner"):
-                    continue
-                # Stop auto-sending after first failure (likely 429 rate limit).
-                if auto_send and not auto_send_failed:
-                    if _try_auto_send_good_review(action, gmail_service):
+            # Advance history cursor immediately so concurrent pushes don't
+            # re-fetch the same batch (send_reply triggers another push).
+            set_push_state(db_url, str(history_id))
+            try:
+                messages = gmail_service.list_messages_since_history(last_history_id)
+            except Exception as exc:
+                if "404" in str(exc) or "history" in str(exc).lower():
+                    return {"status": "ok"}
+                logger.warning("mail push: list_messages_since_history failed: %s", exc)
+                return {"status": "ok"}
+            if messages:
+                result = mail_agent.run_on_messages(messages)
+                actions = result.mail_actions or []
+                prefs = get_mail_preferences(db_url)
+                auto_send = prefs.get("auto_send_good_reviews", False)
+                auto_send_failed = False
+                actions_needing_notify: list[dict] = []
+                for action in actions:
+                    if not action.get("requires_owner"):
                         continue
-                    else:
-                        # Only flag as failed if it was a sendable good review.
-                        if action.get("category") == "new_property_review" and (action.get("rating") or 0) > 3 and action.get("draft"):
-                            auto_send_failed = True
-                notification_store.add_notification(action)
-                actions_needing_notify.append(action)
-            if actions_needing_notify:
-                _notify_owner_for_mail_actions(
-                    actions_needing_notify,
-                    gmail_service,
-                    settings.mail_owner_notify_email,
-                    settings.app_base_url,
-                )
+                    # Stop auto-sending after first failure (likely 429 rate limit).
+                    if auto_send and not auto_send_failed:
+                        if _try_auto_send_good_review(action, gmail_service):
+                            continue
+                        else:
+                            # Only flag as failed if it was a sendable good review.
+                            if action.get("category") == "new_property_review" and (action.get("rating") or 0) > 3 and action.get("draft"):
+                                auto_send_failed = True
+                    notification_store.add_notification(action)
+                    actions_needing_notify.append(action)
+                if actions_needing_notify:
+                    _notify_owner_for_mail_actions(
+                        actions_needing_notify,
+                        gmail_service,
+                        settings.mail_owner_notify_email,
+                        settings.app_base_url,
+                    )
     except HTTPException:
         raise
     except Exception as exc:
