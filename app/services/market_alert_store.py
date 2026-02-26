@@ -206,7 +206,7 @@ class PostgresMarketAlertStore:
             raise RuntimeError(
                 "Postgres backend requires psycopg. Add `psycopg[binary]` dependency."
             ) from exc
-        return psycopg.connect(self.database_url, prepare_threshold=None)
+        return psycopg.connect(self.database_url, prepare_threshold=None, connect_timeout=5)
 
     def _ensure_schema(self) -> None:
         """Create table/index if missing."""

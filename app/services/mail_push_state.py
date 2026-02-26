@@ -76,7 +76,7 @@ def _get_push_state_postgres(database_url: str) -> dict[str, Any] | None:
         return _get_push_state_file()
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -112,7 +112,7 @@ def _set_push_state_postgres(
         return
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -204,7 +204,7 @@ def _get_owner_choice_postgres(database_url: str, email_id: str) -> str | None:
         return _get_owner_choice_file(email_id)
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -234,7 +234,7 @@ def _set_owner_choice_postgres(database_url: str, email_id: str, choice: str) ->
         return
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -317,7 +317,7 @@ def _get_mail_preferences_postgres(database_url: str) -> dict[str, Any]:
         return _get_mail_preferences_file()
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -348,7 +348,7 @@ def _set_mail_preferences_postgres(database_url: str, auto_send_good_reviews: bo
         return
 
     try:
-        with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with psycopg.connect(database_url, prepare_threshold=None, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
