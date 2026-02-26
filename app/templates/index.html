@@ -161,6 +161,10 @@
       <label for="prompt"><strong>Prompt</strong></label>
       <textarea id="prompt" aria-label="Agent prompt" placeholder="Example: What do guests think about wifi signal in Santa Clara?"></textarea>
       <div class="row">
+        <label for="propertyProfile" class="muted">Property</label>
+        <select id="propertyProfile" aria-label="Property profile">
+          <option value="primary">Primary</option>
+        </select>
         <label for="llmProvider" class="muted">Provider</label>
         <select id="llmProvider" aria-label="LLM provider">
           <option value="default">Default</option>
@@ -186,13 +190,17 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     const promptEl = document.getElementById("prompt");
+    const propertyProfileEl = document.getElementById("propertyProfile");
     const providerEl = document.getElementById("llmProvider");
     const runBtn = document.getElementById("runBtn");
     const statusEl = document.getElementById("status");
     const finalEl = document.getElementById("finalResponse");
     const stepsEl = document.getElementById("steps");
     const LLM_PROVIDER_STORAGE_KEY = "reviews_console_llm_provider";
+    const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
     const allowedProviders = new Set(["default", "llmod", "openrouter"]);
+    let propertyProfilesById = new Map();
+    let selectedPropertyProfile = null;
 
     try {
       const storedProvider = localStorage.getItem(LLM_PROVIDER_STORAGE_KEY);
@@ -201,6 +209,84 @@
       }
     } catch (err) {
       // Ignore storage errors in restricted browser contexts.
+    }
+
+    function setSelectedPropertyProfile(profileId) {
+      if (!profileId || !propertyProfilesById.has(profileId)) {
+        selectedPropertyProfile = null;
+        return;
+      }
+      selectedPropertyProfile = propertyProfilesById.get(profileId) || null;
+      propertyProfileEl.value = profileId;
+      try {
+        localStorage.setItem(PROPERTY_PROFILE_STORAGE_KEY, profileId);
+      } catch (err) {
+        // Ignore storage errors in restricted browser contexts.
+      }
+    }
+
+    async function loadPropertyProfiles() {
+      propertyProfileEl.innerHTML = '<option value="primary">Primary</option>';
+      propertyProfilesById = new Map();
+      selectedPropertyProfile = null;
+
+      try {
+        const res = await fetch("/api/property_profiles");
+        const data = await res.json();
+        const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+        if (!profiles.length) {
+          return;
+        }
+
+        propertyProfileEl.innerHTML = "";
+        for (const profile of profiles) {
+          if (!profile || typeof profile.profile_id !== "string") {
+            continue;
+          }
+          propertyProfilesById.set(profile.profile_id, profile);
+          const opt = document.createElement("option");
+          opt.value = profile.profile_id;
+          const propertyName = (profile.property_name || "").trim();
+          const propertyId = (profile.property_id || "").trim();
+          if (propertyName && propertyId) {
+            opt.textContent = `${propertyName} (${propertyId})`;
+          } else if (propertyName) {
+            opt.textContent = propertyName;
+          } else if (propertyId) {
+            opt.textContent = `${profile.profile_id}: ${propertyId}`;
+          } else {
+            opt.textContent = profile.profile_id;
+          }
+          propertyProfileEl.appendChild(opt);
+        }
+
+        const defaultProfileId = (
+          typeof data.default_profile_id === "string"
+            ? data.default_profile_id
+            : profiles[0].profile_id
+        );
+
+        let storedProfileId = null;
+        try {
+          storedProfileId = localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);
+        } catch (err) {
+          // Ignore storage errors in restricted browser contexts.
+        }
+
+        const selectedId = (
+          storedProfileId && propertyProfilesById.has(storedProfileId)
+            ? storedProfileId
+            : (
+              propertyProfilesById.has(defaultProfileId)
+                ? defaultProfileId
+                : profiles[0].profile_id
+            )
+        );
+        setSelectedPropertyProfile(selectedId);
+      } catch (err) {
+        // Keep the page usable even when profile bootstrap fails.
+        selectedPropertyProfile = null;
+      }
     }
 
     function escHtml(s) {
@@ -313,14 +399,32 @@
       stepsEl.innerHTML = "";
 
       try {
+        const requestPayload = {prompt, llm_provider: provider};
+        if (selectedPropertyProfile) {
+          if (selectedPropertyProfile.property_id) requestPayload.property_id = selectedPropertyProfile.property_id;
+          if (selectedPropertyProfile.property_name) requestPayload.property_name = selectedPropertyProfile.property_name;
+          if (selectedPropertyProfile.city) requestPayload.city = selectedPropertyProfile.city;
+          if (selectedPropertyProfile.region) requestPayload.region = selectedPropertyProfile.region;
+          if (selectedPropertyProfile.latitude !== null && selectedPropertyProfile.latitude !== undefined) {
+            requestPayload.latitude = selectedPropertyProfile.latitude;
+          }
+          if (selectedPropertyProfile.longitude !== null && selectedPropertyProfile.longitude !== undefined) {
+            requestPayload.longitude = selectedPropertyProfile.longitude;
+          }
+          if (selectedPropertyProfile.source_urls) requestPayload.source_urls = selectedPropertyProfile.source_urls;
+          if (selectedPropertyProfile.max_scrape_reviews !== null && selectedPropertyProfile.max_scrape_reviews !== undefined) {
+            requestPayload.max_scrape_reviews = selectedPropertyProfile.max_scrape_reviews;
+          }
+        }
+
         const res = await fetch("/api/execute", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({prompt, llm_provider: provider}),
+          body: JSON.stringify(requestPayload),
         });
         const data = await res.json();
         if (data.status === "error") {
-          finalEl.innerHTML = `<div class="status-banner error">⚠ ${escHtml(data.error || "Unknown error")}</div>`;
+          finalEl.innerHTML = `<div class="status-banner error">Error: ${escHtml(data.error || "Unknown error")}</div>`;
         } else {
           renderResponse(data.response);
         }
@@ -328,7 +432,7 @@
         finalEl.scrollIntoView({ behavior: "smooth", block: "start" });
         statusEl.textContent = `Done (${data.status})`;
       } catch (err) {
-        finalEl.innerHTML = `<div class="status-banner error">⚠ ${escHtml(String(err))}</div>`;
+        finalEl.innerHTML = `<div class="status-banner error">Error: ${escHtml(String(err))}</div>`;
         statusEl.textContent = "Failed";
       } finally {
         runBtn.disabled = false;
@@ -336,12 +440,16 @@
     }
 
     runBtn.addEventListener("click", runAgent);
+    propertyProfileEl.addEventListener("change", () => {
+      setSelectedPropertyProfile(propertyProfileEl.value);
+    });
     promptEl.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
         runAgent();
       }
     });
+    loadPropertyProfiles();
   </script>
 </body>
 </html>

@@ -87,6 +87,8 @@
     const alertsEl = document.getElementById("alertsList");
     const statusEl = document.getElementById("status");
     const refreshBtn = document.getElementById("refreshBtn");
+    const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
+    let selectedProfile = null;
 
     function escHtml(s) {
       const d = document.createElement("div");
@@ -118,6 +120,58 @@
       if (!s) return "";
       if (!e || s === e) return s;
       return `${s} \u2013 ${e}`;
+    }
+
+    function buildRunPayload(profile) {
+      if (!profile) return {};
+      const payload = {};
+      if (profile.owner_id) payload.owner_id = profile.owner_id;
+      if (profile.owner_name) payload.owner_name = profile.owner_name;
+      if (profile.property_id) payload.property_id = profile.property_id;
+      if (profile.property_name) payload.property_name = profile.property_name;
+      if (profile.city) payload.city = profile.city;
+      if (profile.region) payload.region = profile.region;
+      if (profile.latitude !== null && profile.latitude !== undefined) payload.latitude = profile.latitude;
+      if (profile.longitude !== null && profile.longitude !== undefined) payload.longitude = profile.longitude;
+      return payload;
+    }
+
+    function buildAlertsQuery(profile) {
+      const params = new URLSearchParams();
+      params.set("limit", "50");
+      if (profile && profile.owner_id) params.set("owner_id", profile.owner_id);
+      if (profile && profile.property_id) params.set("property_id", profile.property_id);
+      return params.toString();
+    }
+
+    async function resolveSelectedProfile() {
+      try {
+        const res = await fetch("/api/property_profiles");
+        const data = await res.json();
+        const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+        if (!profiles.length) return null;
+
+        let storedProfileId = null;
+        try {
+          storedProfileId = localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);
+        } catch (err) {
+          // Ignore storage errors in restricted browser contexts.
+        }
+
+        const defaultProfileId = (
+          typeof data.default_profile_id === "string"
+            ? data.default_profile_id
+            : profiles[0].profile_id
+        );
+        const selectedId = (
+          storedProfileId && profiles.some((p) => p.profile_id === storedProfileId)
+            ? storedProfileId
+            : defaultProfileId
+        );
+        return profiles.find((p) => p.profile_id === selectedId) || profiles[0];
+      } catch (err) {
+        return null;
+      }
     }
 
     function renderAlerts(alerts) {
@@ -169,30 +223,67 @@
       }
     }
 
-    async function loadAlerts() {
-      refreshBtn.disabled = true;
-      statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Loading...';
+    async function runMarketWatch(profile) {
       try {
-        const res = await fetch("/api/market_watch/alerts?limit=50");
+        const payload = buildRunPayload(profile);
+        const res = await fetch("/api/market_watch/run", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.status === "error") {
+          return data.error || "Market watch run failed.";
+        }
+        return null;
+      } catch (err) {
+        return String(err);
+      }
+    }
+
+    async function loadAlerts(profile, runError) {
+      try {
+        const query = buildAlertsQuery(profile);
+        const res = await fetch(`/api/market_watch/alerts?${query}`);
         const data = await res.json();
         if (data.status === "error") {
           alertsEl.innerHTML = `<div class="status-banner error">${escHtml(data.error || "Unknown error")}</div>`;
           statusEl.textContent = "Error";
-        } else {
-          renderAlerts(data.alerts || []);
-          const n = (data.alerts || []).length;
-          statusEl.textContent = n ? `${n} alert${n > 1 ? "s" : ""}` : "No alerts";
+          return;
         }
+
+        renderAlerts(data.alerts || []);
+        const n = (data.alerts || []).length;
+        const propertyLabel = (
+          profile && (profile.property_name || profile.property_id)
+            ? ` for ${profile.property_name || profile.property_id}`
+            : ""
+        );
+        if (runError) {
+          statusEl.textContent = `Run issue${propertyLabel}; showing ${n} alert${n === 1 ? "" : "s"}`;
+          return;
+        }
+        statusEl.textContent = n ? `${n} alert${n > 1 ? "s" : ""}${propertyLabel}` : `No alerts${propertyLabel}`;
       } catch (err) {
         alertsEl.innerHTML = `<div class="status-banner error">${escHtml(String(err))}</div>`;
         statusEl.textContent = "Failed";
+      }
+    }
+
+    async function refreshMarketWatch() {
+      refreshBtn.disabled = true;
+      statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Loading...';
+      try {
+        selectedProfile = await resolveSelectedProfile();
+        const runError = await runMarketWatch(selectedProfile);
+        await loadAlerts(selectedProfile, runError);
       } finally {
         refreshBtn.disabled = false;
       }
     }
 
-    refreshBtn.addEventListener("click", loadAlerts);
-    loadAlerts();
+    refreshBtn.addEventListener("click", refreshMarketWatch);
+    refreshMarketWatch();
   </script>
 </body>
 </html>

@@ -10,6 +10,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, Header, HTTPException, Query
@@ -24,7 +25,7 @@ from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConf
 from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.router_agent import RouterAgent
 from app.architecture import ensure_architecture_png
-from app.config import load_settings
+from app.config import ActiveOwnerContext, load_settings
 from app.schemas import (
     ActiveOwnerContextResponse,
     AgentInfoResponse,
@@ -40,9 +41,12 @@ from app.schemas import (
     MailSettingsUpdateRequest,
     MarketAlertResponse,
     MarketWatchAlertsResponse,
+    MarketWatchRunRequest,
     MarketWatchRunResponse,
     NotificationItem,
     NotificationsResponse,
+    PropertyProfileResponse,
+    PropertyProfilesResponse,
     StepLog,
     ThresholdLabelCandidate,
     ThresholdLabelCase,
@@ -68,6 +72,7 @@ from app.services.mail_push_state import (
     set_push_state,
 )
 from app.services.notification_store import NotificationStore
+from app.services.region_utils import canonicalize_region
 from app.services.web_review_ingest import WebReviewIngestService
 from app.services.web_review_scraper import PlaywrightReviewScraper
 
@@ -99,6 +104,51 @@ def _build_openrouter_headers() -> dict[str, str] | None:
     if settings.openrouter_app_title:
         headers["X-Title"] = settings.openrouter_app_title
     return headers or None
+
+
+def _owner_source_urls(owner: ActiveOwnerContext) -> dict[str, str] | None:
+    """Collect optional source URLs from owner/property context."""
+
+    source_urls: dict[str, str] = {}
+    if owner.google_maps_url:
+        source_urls["google_maps"] = owner.google_maps_url
+    if owner.tripadvisor_url:
+        source_urls["tripadvisor"] = owner.tripadvisor_url
+    return source_urls or None
+
+
+def _build_property_profiles() -> dict[str, ActiveOwnerContext]:
+    """Build selectable property profiles for UI and market-watch override support."""
+
+    profiles: dict[str, ActiveOwnerContext] = {"primary": settings.active_owner}
+    if settings.secondary_owner and settings.secondary_owner.property_id:
+        profiles["secondary"] = settings.secondary_owner
+    return profiles
+
+
+def _owner_to_profile_response(
+    *,
+    profile_id: Literal["primary", "secondary"],
+    owner: ActiveOwnerContext,
+) -> PropertyProfileResponse:
+    """Convert owner context into API profile response shape."""
+
+    return PropertyProfileResponse(
+        profile_id=profile_id,
+        owner_id=owner.owner_id,
+        owner_name=owner.owner_name,
+        property_id=owner.property_id,
+        property_name=owner.property_name,
+        city=owner.city,
+        region=canonicalize_region(owner.region),
+        latitude=owner.latitude,
+        longitude=owner.longitude,
+        source_urls=_owner_source_urls(owner),
+        max_scrape_reviews=owner.default_max_scrape_reviews,
+    )
+
+
+property_profiles = _build_property_profiles()
 
 
 # Shared services are initialized once and reused by all agents.
@@ -468,11 +518,8 @@ def _build_effective_context(payload: ExecuteRequest) -> dict[str, object]:
 
     owner = settings.active_owner
     source_urls: dict[str, str] = {}
-
-    if owner.google_maps_url:
-        source_urls["google_maps"] = owner.google_maps_url
-    if owner.tripadvisor_url:
-        source_urls["tripadvisor"] = owner.tripadvisor_url
+    owner_source_urls = _owner_source_urls(owner) or {}
+    source_urls.update(owner_source_urls)
     if payload.source_urls:
         source_urls.update(payload.source_urls)
 
@@ -488,7 +535,7 @@ def _build_effective_context(payload: ExecuteRequest) -> dict[str, object]:
         "property_id": payload.property_id or owner.property_id,
         "property_name": payload.property_name or owner.property_name,
         "city": payload.city or owner.city,
-        "region": payload.region or owner.region,
+        "region": canonicalize_region(payload.region) or canonicalize_region(owner.region),
         "latitude": payload.latitude if payload.latitude is not None else owner.latitude,
         "longitude": payload.longitude if payload.longitude is not None else owner.longitude,
         "source_urls": source_urls or None,
@@ -500,24 +547,35 @@ def _build_active_owner_context() -> ActiveOwnerContextResponse:
     """Expose default owner/property context without requiring an execute payload."""
 
     owner = settings.active_owner
-    source_urls: dict[str, str] = {}
-    if owner.google_maps_url:
-        source_urls["google_maps"] = owner.google_maps_url
-    if owner.tripadvisor_url:
-        source_urls["tripadvisor"] = owner.tripadvisor_url
-
     return ActiveOwnerContextResponse(
         owner_id=owner.owner_id,
         owner_name=owner.owner_name,
         property_id=owner.property_id,
         property_name=owner.property_name,
         city=owner.city,
-        region=owner.region,
+        region=canonicalize_region(owner.region),
         latitude=owner.latitude,
         longitude=owner.longitude,
-        source_urls=source_urls or None,
+        source_urls=_owner_source_urls(owner),
         max_scrape_reviews=owner.default_max_scrape_reviews,
     )
+
+
+def _build_property_profiles_response() -> PropertyProfilesResponse:
+    """Return profile list consumed by the reviews/market-watch UIs."""
+
+    profiles: list[PropertyProfileResponse] = []
+    for profile_id in ("primary", "secondary"):
+        owner = property_profiles.get(profile_id)
+        if owner is None:
+            continue
+        profiles.append(
+            _owner_to_profile_response(
+                profile_id=("secondary" if profile_id == "secondary" else "primary"),
+                owner=owner,
+            )
+        )
+    return PropertyProfilesResponse(default_profile_id="primary", profiles=profiles)
 
 
 def _build_autonomous_context() -> dict[str, object]:
@@ -530,10 +588,36 @@ def _build_autonomous_context() -> dict[str, object]:
         "property_id": owner.property_id,
         "property_name": owner.property_name,
         "city": owner.city,
-        "region": owner.region,
+        "region": canonicalize_region(owner.region),
         "latitude": owner.latitude,
         "longitude": owner.longitude,
     }
+
+
+def _merge_market_watch_context(payload: MarketWatchRunRequest | None) -> dict[str, object]:
+    """Merge optional manual override context over active-owner defaults."""
+
+    merged = _build_autonomous_context()
+    if payload is None:
+        return merged
+
+    if payload.owner_id is not None and payload.owner_id.strip():
+        merged["owner_id"] = payload.owner_id.strip()
+    if payload.owner_name is not None and payload.owner_name.strip():
+        merged["owner_name"] = payload.owner_name.strip()
+    if payload.property_id is not None and payload.property_id.strip():
+        merged["property_id"] = payload.property_id.strip()
+    if payload.property_name is not None and payload.property_name.strip():
+        merged["property_name"] = payload.property_name.strip()
+    if payload.city is not None and payload.city.strip():
+        merged["city"] = payload.city.strip()
+    if payload.region is not None:
+        merged["region"] = canonicalize_region(payload.region)
+    if payload.latitude is not None:
+        merged["latitude"] = payload.latitude
+    if payload.longitude is not None:
+        merged["longitude"] = payload.longitude
+    return merged
 
 
 def _serialize_alert(record: MarketAlertRecord) -> MarketAlertResponse:
@@ -785,6 +869,13 @@ def active_owner_context() -> ActiveOwnerContextResponse:
     return _build_active_owner_context()
 
 
+@app.get("/api/property_profiles", response_model=PropertyProfilesResponse)
+def property_profiles_endpoint() -> PropertyProfilesResponse:
+    """Return selectable property profiles for reviews/market-watch UI flows."""
+
+    return _build_property_profiles_response()
+
+
 @app.get("/api/agent_info", response_model=AgentInfoResponse)
 def agent_info() -> AgentInfoResponse:
     """Required endpoint: returns purpose, template, and full prompt examples."""
@@ -870,14 +961,23 @@ def model_architecture() -> FileResponse:
 
 
 @app.get("/api/market_watch/alerts", response_model=MarketWatchAlertsResponse)
-def market_watch_alerts(limit: int = Query(default=20, ge=1, le=100)) -> MarketWatchAlertsResponse:
-    """Return latest stored market-watch alerts for current active owner/property scope."""
+def market_watch_alerts(
+    limit: int = Query(default=20, ge=1, le=100),
+    owner_id: str | None = Query(default=None),
+    property_id: str | None = Query(default=None),
+) -> MarketWatchAlertsResponse:
+    """Return latest stored market-watch alerts scoped by optional owner/property filters."""
 
-    owner = settings.active_owner
+    owner_filter = owner_id.strip() if owner_id and owner_id.strip() else settings.active_owner.owner_id
+    property_filter = (
+        property_id.strip()
+        if property_id and property_id.strip()
+        else settings.active_owner.property_id
+    )
     try:
         records = market_alert_store.list_latest_alerts(
-            owner_id=owner.owner_id,
-            property_id=owner.property_id,
+            owner_id=owner_filter,
+            property_id=property_filter,
             limit=limit,
         )
         alerts = [_serialize_alert(record) for record in records]
@@ -888,6 +988,7 @@ def market_watch_alerts(limit: int = Query(default=20, ge=1, le=100)) -> MarketW
 
 @app.post("/api/market_watch/run", response_model=MarketWatchRunResponse)
 def market_watch_run(
+    payload: MarketWatchRunRequest | None = Body(default=None),
     x_market_watch_secret: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
 ) -> MarketWatchRunResponse:
@@ -907,7 +1008,8 @@ def market_watch_run(
         )
 
     try:
-        outcome = market_watch_agent.run_autonomous(context=_build_autonomous_context())
+        context = _merge_market_watch_context(payload)
+        outcome = market_watch_agent.run_autonomous(context=context)
         return MarketWatchRunResponse(
             status="ok",
             error=None,

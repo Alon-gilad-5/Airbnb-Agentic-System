@@ -105,6 +105,29 @@ class ActiveOwnerContextResponse(BaseModel):
     max_scrape_reviews: int | None
 
 
+class PropertyProfileResponse(BaseModel):
+    """One selectable property profile used by Reviews and Market Watch UIs."""
+
+    profile_id: Literal["primary", "secondary"]
+    owner_id: str | None
+    owner_name: str | None
+    property_id: str | None
+    property_name: str | None
+    city: str | None
+    region: str | None
+    latitude: float | None
+    longitude: float | None
+    source_urls: dict[str, str] | None
+    max_scrape_reviews: int | None
+
+
+class PropertyProfilesResponse(BaseModel):
+    """Available selectable property profiles plus default selection marker."""
+
+    default_profile_id: Literal["primary", "secondary"]
+    profiles: list[PropertyProfileResponse]
+
+
 class MarketAlertResponse(BaseModel):
     """Serialized alert item exposed by market-watch inbox endpoint."""
 
@@ -132,6 +155,19 @@ class MarketWatchAlertsResponse(BaseModel):
     status: Literal["ok", "error"]
     error: str | None
     alerts: list[MarketAlertResponse]
+
+
+class MarketWatchRunRequest(BaseModel):
+    """Optional context override for manual market-watch runs."""
+
+    owner_id: str | None = None
+    owner_name: str | None = None
+    property_id: str | None = None
+    property_name: str | None = None
+    city: str | None = None
+    region: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class MarketWatchRunResponse(BaseModel):

@@ -6,6 +6,7 @@ This repository includes a multi-agent-ready API scaffold for hospitality intell
 
 - `GET /api/team_info`
 - `GET /api/active_owner_context`
+- `GET /api/property_profiles`
 - `GET /api/agent_info`
 - `GET /api/model_architecture` (PNG)
 - `POST /api/execute`
@@ -95,6 +96,18 @@ Active owner/property defaults (used when request omits context fields):
 - `ACTIVE_PROPERTY_TRIPADVISOR_URL`
 - `ACTIVE_MAX_SCRAPE_REVIEWS`
 
+Optional secondary property profile (shown in UI selector):
+
+- `SECONDARY_PROPERTY_ID`
+- `SECONDARY_PROPERTY_NAME`
+- `SECONDARY_PROPERTY_CITY`
+- `SECONDARY_PROPERTY_REGION`
+- `SECONDARY_PROPERTY_LAT`
+- `SECONDARY_PROPERTY_LON`
+- `SECONDARY_PROPERTY_GOOGLE_MAPS_URL`
+- `SECONDARY_PROPERTY_TRIPADVISOR_URL`
+- `SECONDARY_MAX_SCRAPE_REVIEWS`
+
 Market-watch settings:
 
 - `MARKET_WATCH_ENABLED=true`
@@ -146,6 +159,28 @@ Read latest alerts:
 curl "http://localhost:8000/api/market_watch/alerts?limit=20"
 ```
 
+Read alerts for a specific profile scope:
+
+```bash
+curl "http://localhost:8000/api/market_watch/alerts?limit=20&owner_id=owner_001&property_id=10046908"
+```
+
+Run market-watch for an explicit property context:
+
+```bash
+curl -X POST http://localhost:8000/api/market_watch/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner_id": "owner_001",
+    "property_id": "10046908",
+    "property_name": "Cozy Vintage-Styled Unit w/ Patio",
+    "city": "Los Angeles",
+    "region": "los angeles",
+    "latitude": 34.01542,
+    "longitude": -118.29229
+  }'
+```
+
 Ask via `/api/execute` (router sends market-intel prompts to `market_watch_agent`):
 
 ```json
@@ -186,6 +221,21 @@ Generate sample properties and run smoke tests:
 ```bash
 py -3.12 scripts/select_sample_properties.py
 py -3.12 scripts/run_property_smoke_tests.py
+```
+
+Targeted one-property ingest into test namespace (low-review profile example):
+
+```bash
+py -3.12 scripts/pinecone_reviews_ingest.py \
+  --mode upsert \
+  --index-name airbnb-reviews \
+  --namespace airbnb-reviews-test \
+  --selection-mode manual \
+  --property-ids-file data/property_ids_low_review.txt \
+  --max-properties 1 \
+  --max-reviews 20 \
+  --no-resume \
+  --checkpoint-path ingest_state/reviews_ingest_low_property_checkpoint.json
 ```
 
 Smoke test output is saved to:

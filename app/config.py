@@ -105,6 +105,7 @@ class Settings:
     mail_owner_notify_email: str | None
     app_base_url: str | None
     active_owner: ActiveOwnerContext
+    secondary_owner: ActiveOwnerContext | None
 
 
 def load_settings() -> Settings:
@@ -124,6 +125,20 @@ def load_settings() -> Settings:
         except ValueError:
             return default
 
+    def parse_int(value: str | None, default: int | None = None) -> int | None:
+        if value is None or value.strip() == "":
+            return default
+        try:
+            return int(value)
+        except ValueError:
+            return default
+
+    def parse_region(value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped.lower() or None
+
     allowlist_raw = os.getenv("SCRAPING_ALLOWLIST", "google_maps,tripadvisor")
     allowlist = [x.strip().lower() for x in allowlist_raw.split(",") if x.strip()]
     gmaps_user_agents_raw = os.getenv("SCRAPING_GMAPS_USER_AGENTS", "")
@@ -134,17 +149,34 @@ def load_settings() -> Settings:
         property_id=os.getenv("ACTIVE_PROPERTY_ID"),
         property_name=os.getenv("ACTIVE_PROPERTY_NAME"),
         city=os.getenv("ACTIVE_PROPERTY_CITY"),
-        region=os.getenv("ACTIVE_PROPERTY_REGION"),
+        region=parse_region(os.getenv("ACTIVE_PROPERTY_REGION")),
         latitude=parse_float(os.getenv("ACTIVE_PROPERTY_LAT")),
         longitude=parse_float(os.getenv("ACTIVE_PROPERTY_LON")),
         google_maps_url=os.getenv("ACTIVE_PROPERTY_GOOGLE_MAPS_URL"),
         tripadvisor_url=os.getenv("ACTIVE_PROPERTY_TRIPADVISOR_URL"),
-        default_max_scrape_reviews=(
-            int(os.getenv("ACTIVE_MAX_SCRAPE_REVIEWS"))
-            if os.getenv("ACTIVE_MAX_SCRAPE_REVIEWS")
-            else None
-        ),
+        default_max_scrape_reviews=parse_int(os.getenv("ACTIVE_MAX_SCRAPE_REVIEWS")),
     )
+    secondary_property_id_raw = os.getenv("SECONDARY_PROPERTY_ID")
+    secondary_property_id = (
+        secondary_property_id_raw.strip()
+        if secondary_property_id_raw and secondary_property_id_raw.strip()
+        else None
+    )
+    secondary_owner: ActiveOwnerContext | None = None
+    if secondary_property_id:
+        secondary_owner = ActiveOwnerContext(
+            owner_id=active_owner.owner_id,
+            owner_name=active_owner.owner_name,
+            property_id=secondary_property_id,
+            property_name=os.getenv("SECONDARY_PROPERTY_NAME"),
+            city=os.getenv("SECONDARY_PROPERTY_CITY"),
+            region=parse_region(os.getenv("SECONDARY_PROPERTY_REGION")),
+            latitude=parse_float(os.getenv("SECONDARY_PROPERTY_LAT")),
+            longitude=parse_float(os.getenv("SECONDARY_PROPERTY_LON")),
+            google_maps_url=os.getenv("SECONDARY_PROPERTY_GOOGLE_MAPS_URL"),
+            tripadvisor_url=os.getenv("SECONDARY_PROPERTY_TRIPADVISOR_URL"),
+            default_max_scrape_reviews=parse_int(os.getenv("SECONDARY_MAX_SCRAPE_REVIEWS")),
+        )
 
     students = [
         TeamStudent(
@@ -272,4 +304,5 @@ def load_settings() -> Settings:
         mail_owner_notify_email=os.getenv("MAIL_OWNER_NOTIFY_EMAIL"),
         app_base_url=os.getenv("APP_URL") or os.getenv("MAIL_APP_BASE_URL"),
         active_owner=active_owner,
+        secondary_owner=secondary_owner,
     )
