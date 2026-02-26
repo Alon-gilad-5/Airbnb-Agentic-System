@@ -44,6 +44,8 @@ class RouterAgent:
         "review", "reviews", "guest", "guests", "wifi", "internet",
         "clean", "cleanliness", "check-in", "service", "noise",
         "host", "feedback", "rating",
+        "neighbor", "neighbours", "neighbors", "neighbour",
+        "compare", "comparison", "competitor",
     }
     _market_watch_keywords = {
         "market", "intel", "weather", "forecast", "storm", "snow",

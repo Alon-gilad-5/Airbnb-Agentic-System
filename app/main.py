@@ -57,6 +57,7 @@ from app.schemas import (
     TeamStudentResponse,
 )
 from app.services.market_alert_store import MarketAlertRecord, create_market_alert_store
+from app.services.neighbor_store import create_neighbor_store
 from app.services.market_data_providers import MarketDataProviders
 from app.services.market_watch_scheduler import MarketWatchScheduler
 from app.services.chat_service import ChatService
@@ -254,6 +255,8 @@ market_watch_agent = MarketWatchAgent(
     ),
 )
 
+neighbor_store = create_neighbor_store(database_url=settings.database_url)
+
 gmail_service = GmailService(
     enabled=settings.mail_enabled,
     gauth_path=settings.gmail_gauth_path,
@@ -280,6 +283,7 @@ def _build_reviews_agent(provider_chat_service: ChatService) -> ReviewsAgent:
             relevance_score_threshold=settings.reviews_relevance_score_threshold,
             min_lexical_relevance_for_upsert=settings.scraping_min_lexical_relevance_for_upsert,
         ),
+        neighbor_store=neighbor_store,
     )
 
 

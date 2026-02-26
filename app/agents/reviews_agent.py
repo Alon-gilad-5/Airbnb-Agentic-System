@@ -25,6 +25,20 @@ from app.services.web_review_scraper import PlaywrightReviewScraper, ScrapedRevi
 NO_EVIDENCE_RESPONSE = "I couldn't find enough data to answer your question."
 LOW_EVIDENCE_PREFIX = "Evidence is limited (based on only 1-2 relevant reviews), so confidence is low."
 
+_COMPARISON_KEYWORDS = {
+    "compare", "compared", "comparison", "comparing",
+    "neighbour", "neighbours", "neighbor", "neighbors",
+    "competition", "competitors", "competitor", "competitive",
+    "vs", "versus", "against", "better than", "worse than",
+    "how am i doing", "how do i stack up",
+}
+
+
+def _detect_comparison_intent(prompt: str) -> bool:
+    """Check if the user prompt is asking for a neighbor comparison."""
+    lowered = prompt.lower()
+    return any(kw in lowered for kw in _COMPARISON_KEYWORDS)
+
 
 @dataclass
 class ReviewsAgentConfig:
@@ -36,6 +50,7 @@ class ReviewsAgentConfig:
     thin_evidence_min: int = 1
     thin_evidence_max: int = 2
     max_answer_words: int = 140
+    max_comparison_words: int = 280
     max_citations: int = 4
     min_lexical_relevance_for_upsert: float = 0.15
 
@@ -217,6 +232,7 @@ class ReviewsPipeline:
         web_scraper: PlaywrightReviewScraper,
         web_ingest_service: WebReviewIngestService,
         config: ReviewsAgentConfig,
+        neighbor_store: Any | None = None,
     ) -> None:
         self._embedding = embedding_service
         self._retriever = retriever
@@ -224,6 +240,7 @@ class ReviewsPipeline:
         self._scraper = web_scraper
         self._ingest = web_ingest_service
         self._config = config
+        self._neighbor_store = neighbor_store
 
         self.build_filter = RunnableLambda(self._build_filter_stage).with_config(
             run_name="BuildMetadataFilter",
@@ -249,6 +266,12 @@ class ReviewsPipeline:
         self.finalize = RunnableLambda(self._finalize_stage).with_config(
             run_name="Finalize",
         )
+        self.neighbor_retrieve = RunnableLambda(self._neighbor_retrieve_stage).with_config(
+            run_name="NeighborRetrieve",
+        )
+        self.comparison_answer = RunnableLambda(self._comparison_answer_stage).with_config(
+            run_name="ComparisonAnswer",
+        )
 
     # -- state merge helper --
 
@@ -272,6 +295,18 @@ class ReviewsPipeline:
         if state.get("final_answer") and not state.get("should_answer", True):
             return state
 
+        # Comparison branch: owner vs. neighbors
+        is_comparison = (
+            _detect_comparison_intent(state["prompt"])
+            and self._neighbor_store is not None
+        )
+        if is_comparison:
+            state = self._apply(state, self.neighbor_retrieve.invoke(state))
+            state = self._apply(state, self.comparison_answer.invoke(state))
+            state = self._apply(state, self.finalize.invoke(state))
+            return state
+
+        # Normal single-property path
         state = self._apply(state, self.fallback_decision.invoke(state))
 
         if state.get("fallback_triggered"):
@@ -357,6 +392,7 @@ class ReviewsPipeline:
         except Exception as exc:
             return {
                 "matches": [],
+                "query_embedding": [],
                 "final_answer": (
                     "I could not access retrieval services right now. "
                     "Please verify LLMOD/Pinecone connectivity and try again."
@@ -377,6 +413,7 @@ class ReviewsPipeline:
 
         return {
             "matches": matches,
+            "query_embedding": query_embedding,
             "steps": [
                 StepLog(
                     module="reviews_agent.retrieval",
@@ -502,6 +539,220 @@ class ReviewsPipeline:
         relevant = [m for m in matches if m.score >= cfg.relevance_score_threshold]
         relevant.extend([m for m in web_matches if m.score >= cfg.relevance_score_threshold])
         return {"relevant_matches": relevant, "evidence_count": len(relevant)}
+
+    # -- comparison stages --
+
+    def _neighbor_retrieve_stage(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Retrieve reviews for neighbor properties from Pinecone."""
+        ctx = state.get("context") or {}
+        property_id = _context_str(ctx, "property_id")
+        query_embedding = state.get("query_embedding") or []
+        cfg = self._config
+
+        if not property_id or not self._neighbor_store:
+            return {
+                "neighbor_matches": [],
+                "neighbor_ids": [],
+                "steps": [
+                    StepLog(
+                        module="reviews_agent.neighbor_retrieve",
+                        prompt={"property_id": property_id},
+                        response={"status": "skipped", "reason": "no property_id or neighbor store"},
+                    )
+                ],
+            }
+
+        neighbor_ids = self._neighbor_store.get_neighbors(property_id)
+        if not neighbor_ids:
+            return {
+                "neighbor_matches": [],
+                "neighbor_ids": [],
+                "steps": [
+                    StepLog(
+                        module="reviews_agent.neighbor_retrieve",
+                        prompt={"property_id": property_id},
+                        response={"status": "no_neighbors", "reason": "property not found in neighbor mapping"},
+                    )
+                ],
+            }
+
+        neighbor_filter: dict[str, Any] = {"property_id": {"$in": neighbor_ids}}
+        try:
+            neighbor_matches = self._retriever.query(
+                embedding=query_embedding,
+                top_k=cfg.top_k,
+                metadata_filter=neighbor_filter,
+            )
+        except Exception as exc:
+            return {
+                "neighbor_matches": [],
+                "neighbor_ids": neighbor_ids,
+                "steps": [
+                    StepLog(
+                        module="reviews_agent.neighbor_retrieve",
+                        prompt={"property_id": property_id, "neighbor_count": len(neighbor_ids)},
+                        response={"error": f"{type(exc).__name__}: {exc}"},
+                    )
+                ],
+            }
+
+        return {
+            "neighbor_matches": neighbor_matches,
+            "neighbor_ids": neighbor_ids,
+            "steps": [
+                StepLog(
+                    module="reviews_agent.neighbor_retrieve",
+                    prompt={"property_id": property_id, "neighbor_count": len(neighbor_ids)},
+                    response={
+                        "match_count": len(neighbor_matches),
+                        "top_match_ids": [m.vector_id for m in neighbor_matches[:5]],
+                    },
+                )
+            ],
+        }
+
+    def _comparison_answer_stage(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Generate a comparative answer: owner property vs. neighbors."""
+        owner_matches = state.get("matches") or []
+        neighbor_matches = state.get("neighbor_matches") or []
+        cfg = self._config
+        prompt_text = state["prompt"]
+        ctx = state.get("context") or {}
+        property_id = _context_str(ctx, "property_id") or "unknown"
+
+        owner_relevant = [m for m in owner_matches if m.score >= cfg.relevance_score_threshold]
+        neighbor_relevant = [m for m in neighbor_matches if m.score >= cfg.relevance_score_threshold]
+        all_relevant = owner_relevant + neighbor_relevant
+        evidence_count = len(all_relevant)
+
+        # Count distinct neighbor properties with reviews
+        neighbor_props = {str(m.metadata.get("property_id", "")) for m in neighbor_relevant}
+        neighbor_props.discard("")
+        n_neighbor_props_with_reviews = len(neighbor_props)
+
+        # Handle no-evidence edge cases
+        if not owner_relevant and not neighbor_relevant:
+            return {
+                "relevant_matches": [],
+                "evidence_count": 0,
+                "should_answer": False,
+                "final_answer": NO_EVIDENCE_RESPONSE,
+                "steps": [
+                    StepLog(
+                        module="reviews_agent.comparison_answer",
+                        prompt={"property_id": property_id},
+                        response={"status": "no_evidence"},
+                    )
+                ],
+            }
+
+        owner_context = _build_evidence_context(owner_relevant, cfg.max_context_reviews)
+        neighbor_context = _build_evidence_context(neighbor_relevant, cfg.max_context_reviews)
+
+        if not owner_context.strip():
+            owner_context = "(No relevant reviews found for your property on this topic.)"
+        if not neighbor_context.strip():
+            neighbor_context = "(No relevant reviews found for neighboring properties on this topic.)"
+
+        if not self._chat.is_available:
+            fallback = (
+                f"Found {len(owner_relevant)} owner review(s) and "
+                f"{len(neighbor_relevant)} neighbor review(s), but LLM is unavailable for synthesis."
+            )
+            return {
+                "relevant_matches": all_relevant,
+                "evidence_count": evidence_count,
+                "llm_answer": fallback,
+                "steps": [
+                    StepLog(
+                        module="reviews_agent.comparison_answer",
+                        prompt={"property_id": property_id},
+                        response={"status": "llm_unavailable"},
+                    )
+                ],
+            }
+
+        system_prompt = (
+            "You are a hospitality insights assistant specializing in competitive analysis. "
+            "Compare the owner's property against its neighboring competitors using ONLY the "
+            "provided review evidence. If evidence is thin for either side, say so explicitly. "
+            "Do not use unsupported broad quantifiers (e.g., many guests, most guests)."
+        )
+        user_prompt = (
+            f"Question:\n{prompt_text}\n\n"
+            f"=== YOUR PROPERTY (ID: {property_id}) REVIEWS ===\n{owner_context}\n\n"
+            f"=== NEIGHBOR PROPERTIES REVIEWS ===\n{neighbor_context}\n\n"
+            f"Owner review count: {len(owner_relevant)}\n"
+            f"Neighbor review count: {len(neighbor_relevant)}\n"
+            f"Number of neighbor properties with reviews: {n_neighbor_props_with_reviews}\n\n"
+            "Confidence policy:\n"
+            "- Less than 3 reviews on either side => confidence must be low.\n"
+            "- 3+ reviews on both sides => confidence can be medium/high if supported.\n\n"
+            "Return ONLY a concise 3-5 sentence comparative summary that directly "
+            "addresses the question. Structure: first summarize your property's standing, "
+            "then how neighbors compare, then a brief actionable insight.\n"
+            "Format:\n"
+            "<answer text>\n\n"
+            "Confidence: <high/medium/low>\n\n"
+            "Do NOT include evidence bullets, citations, or review numbers."
+        )
+
+        try:
+            llm_answer = self._chat.generate(system_prompt=system_prompt, user_prompt=user_prompt)
+        except Exception as exc:
+            return {
+                "relevant_matches": all_relevant,
+                "evidence_count": evidence_count,
+                "final_answer": (
+                    "I retrieved relevant reviews but could not generate the comparison right now. "
+                    "Please retry in a moment."
+                ),
+                "steps": [
+                    StepLog(
+                        module="reviews_agent.comparison_answer",
+                        prompt={"system_prompt": system_prompt, "user_prompt": user_prompt},
+                        response={"error": f"{type(exc).__name__}: {exc}"},
+                    )
+                ],
+            }
+
+        if not llm_answer.strip():
+            llm_answer = (
+                f"Found {len(owner_relevant)} owner review(s) and "
+                f"{len(neighbor_relevant)} neighbor review(s), but synthesis returned empty."
+            )
+
+        # Cap words for comparison
+        llm_answer = _cap_words(llm_answer.strip(), cfg.max_comparison_words)
+
+        # Add low-evidence disclaimer if thin
+        disclaimer = None
+        if evidence_count <= cfg.thin_evidence_max:
+            disclaimer = LOW_EVIDENCE_PREFIX
+            llm_answer = f"{disclaimer}\n\n{llm_answer}"
+
+        return {
+            "relevant_matches": all_relevant,
+            "evidence_count": evidence_count,
+            "llm_answer": llm_answer,
+            "disclaimer_prefix": disclaimer,
+            "steps": [
+                StepLog(
+                    module="reviews_agent.comparison_answer",
+                    prompt={
+                        "model": self._chat.model,
+                        "system_prompt": system_prompt,
+                        "user_prompt": user_prompt,
+                    },
+                    response={
+                        "text": llm_answer,
+                        "owner_evidence": len(owner_relevant),
+                        "neighbor_evidence": len(neighbor_relevant),
+                        "neighbor_properties": n_neighbor_props_with_reviews,
+                    },
+                )
+            ],
+        }
 
     def _evidence_guard_stage(self, state: dict[str, Any]) -> dict[str, Any]:
         count = state.get("evidence_count", 0)
@@ -694,6 +945,7 @@ class ReviewsAgent(Agent):
         web_scraper: PlaywrightReviewScraper,
         web_ingest_service: WebReviewIngestService,
         config: ReviewsAgentConfig | None = None,
+        neighbor_store: Any | None = None,
     ) -> None:
         self.embedding_service = embedding_service
         self.retriever = retriever
@@ -708,6 +960,7 @@ class ReviewsAgent(Agent):
             web_scraper=web_scraper,
             web_ingest_service=web_ingest_service,
             config=self.config,
+            neighbor_store=neighbor_store,
         )
 
     def run(self, prompt: str, context: dict[str, object] | None = None) -> AgentResult:
