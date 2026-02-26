@@ -15,8 +15,11 @@ class ChatService:
         api_key: str | None,
         base_url: str | None,
         model: str,
+        provider_name: str = "llmod",
+        default_headers: dict[str, str] | None = None,
         max_output_tokens: int = 180,
     ) -> None:
+        self._provider_name = provider_name.strip().lower() or "llmod"
         self._model = model
         self._max_output_tokens = max(1, int(max_output_tokens))
         self._llm: ChatOpenAI | None = None
@@ -25,6 +28,7 @@ class ChatService:
                 api_key=api_key,
                 base_url=base_url,
                 model=model,
+                default_headers=default_headers,
                 max_tokens=self._max_output_tokens,
                 temperature=1 if "gpt-5" in model.lower() else 0.2,
                 max_retries=0,
@@ -42,11 +46,20 @@ class ChatService:
 
         return self._model
 
+    @property
+    def provider_name(self) -> str:
+        """Expose provider identifier for runtime diagnostics."""
+
+        return self._provider_name
+
     def generate(self, *, system_prompt: str, user_prompt: str) -> str:
         """Run one chat completion and return plain text output."""
 
         if self._llm is None:
-            raise RuntimeError("Chat service is not configured (missing LLMOD_API_KEY or BASE_URL)")
+            raise RuntimeError(
+                f"Chat service '{self._provider_name}' is not configured "
+                "(missing provider API key/base URL)"
+            )
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", "{system}"),

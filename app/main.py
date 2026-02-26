@@ -87,6 +87,18 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 THRESHOLD_LABEL_POOL_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_label_pool.jsonl"
 THRESHOLD_GOLD_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_gold.csv"
+VALID_CHAT_PROVIDERS = {"llmod", "openrouter"}
+
+
+def _build_openrouter_headers() -> dict[str, str] | None:
+    """Build optional OpenRouter headers for attribution."""
+
+    headers: dict[str, str] = {}
+    if settings.openrouter_http_referer:
+        headers["HTTP-Referer"] = settings.openrouter_http_referer
+    if settings.openrouter_app_title:
+        headers["X-Title"] = settings.openrouter_app_title
+    return headers or None
 
 
 # Shared services are initialized once and reused by all agents.
@@ -105,12 +117,29 @@ try:
 except Exception as exc:
     logger.warning("PineconeRetriever init failed, reviews will be unavailable: %s", exc)
     retriever = PineconeRetriever(api_key=None, index_name="", namespace="")
-chat_service = ChatService(
-    api_key=settings.llmod_api_key,
-    base_url=settings.base_url,
-    model=settings.chat_model,
-    max_output_tokens=settings.chat_max_output_tokens,
+chat_services_by_provider: dict[str, ChatService] = {
+    "llmod": ChatService(
+        provider_name="llmod",
+        api_key=settings.llmod_api_key,
+        base_url=settings.base_url,
+        model=settings.chat_model,
+        max_output_tokens=settings.chat_max_output_tokens,
+    ),
+    "openrouter": ChatService(
+        provider_name="openrouter",
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        model=settings.openrouter_chat_model,
+        default_headers=_build_openrouter_headers(),
+        max_output_tokens=settings.chat_max_output_tokens,
+    ),
+}
+default_chat_provider = (
+    settings.llm_chat_provider
+    if settings.llm_chat_provider in VALID_CHAT_PROVIDERS
+    else "llmod"
 )
+chat_service = chat_services_by_provider[default_chat_provider]
 web_scraper = PlaywrightReviewScraper(
     enabled=settings.scraping_enabled,
     allowlist=settings.scraping_allowlist,
@@ -185,27 +214,15 @@ gmail_service = GmailService(
     gmail_client_secret=settings.gmail_client_secret,
     gmail_refresh_token=settings.gmail_refresh_token,
 )
-mail_agent = MailAgent(
-    gmail_service=gmail_service,
-    chat_service=chat_service,
-    config=MailAgentConfig(
-        bad_review_threshold=settings.mail_bad_review_threshold,
-        max_inbox_fetch=settings.mail_max_inbox_fetch,
-        auto_send_enabled=settings.mail_auto_send_enabled,
-    ),
-)
-notification_store = NotificationStore(database_url=settings.database_url)
 
-# Serialize push webhook processing — the Gmail API client (httplib2) is not
-# thread-safe, so concurrent threadpool workers would corrupt SSL state.
-_push_lock = threading.Lock()
 
-router_agent = RouterAgent()
-agent_registry: dict[str, Agent] = {
-    "reviews_agent": ReviewsAgent(
+def _build_reviews_agent(provider_chat_service: ChatService) -> ReviewsAgent:
+    """Construct a reviews agent bound to one configured chat provider."""
+
+    return ReviewsAgent(
         embedding_service=embedding_service,
         retriever=retriever,
-        chat_service=chat_service,
+        chat_service=provider_chat_service,
         web_scraper=web_scraper,
         web_ingest_service=web_ingest_service,
         config=ReviewsAgentConfig(
@@ -213,7 +230,45 @@ agent_registry: dict[str, Agent] = {
             relevance_score_threshold=settings.reviews_relevance_score_threshold,
             min_lexical_relevance_for_upsert=settings.scraping_min_lexical_relevance_for_upsert,
         ),
-    ),
+    )
+
+
+def _build_mail_agent(provider_chat_service: ChatService) -> MailAgent:
+    """Construct a mail agent bound to one configured chat provider."""
+
+    return MailAgent(
+        gmail_service=gmail_service,
+        chat_service=provider_chat_service,
+        config=MailAgentConfig(
+            bad_review_threshold=settings.mail_bad_review_threshold,
+            max_inbox_fetch=settings.mail_max_inbox_fetch,
+            auto_send_enabled=settings.mail_auto_send_enabled,
+        ),
+    )
+
+
+reviews_agents_by_provider: dict[str, ReviewsAgent] = {
+    provider_name: _build_reviews_agent(provider_chat_service)
+    for provider_name, provider_chat_service in chat_services_by_provider.items()
+}
+mail_agents_by_provider: dict[str, MailAgent] = {
+    provider_name: _build_mail_agent(provider_chat_service)
+    for provider_name, provider_chat_service in chat_services_by_provider.items()
+}
+mail_agent = mail_agents_by_provider[default_chat_provider]
+notification_store = NotificationStore(database_url=settings.database_url)
+
+# Serialize push webhook processing — the Gmail API client (httplib2) is not
+# thread-safe, so concurrent threadpool workers would corrupt SSL state.
+_push_lock = threading.Lock()
+# Coalesce push bursts to one background worker so request threads stay free.
+_push_worker_state_lock = threading.Lock()
+_push_worker_running = False
+_pending_push_history_id: str | None = None
+
+router_agent = RouterAgent()
+agent_registry: dict[str, Agent] = {
+    "reviews_agent": reviews_agents_by_provider[default_chat_provider],
     "market_watch_agent": market_watch_agent,
     "mail_agent": mail_agent,
 }
@@ -876,6 +931,16 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
 
     steps: list[StepLog] = []
     try:
+        requested_provider = (payload.llm_provider or "default").strip().lower()
+        provider_is_explicit = requested_provider in VALID_CHAT_PROVIDERS
+        resolved_provider = (
+            default_chat_provider
+            if requested_provider in {"", "default"}
+            else requested_provider
+        )
+        if resolved_provider not in VALID_CHAT_PROVIDERS:
+            resolved_provider = default_chat_provider
+
         decision, route_step = router_agent.route(payload.prompt)
         if decision.agent_name == "market_watch_agent" and not settings.market_watch_enabled:
             decision.agent_name = "reviews_agent"
@@ -887,9 +952,44 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
             decision.reason += " mail_agent is disabled, rerouted to reviews_agent."
             route_step.response["selected_agent"] = decision.agent_name
             route_step.response["reason"] = decision.reason
+        route_step.response["llm_provider_requested"] = requested_provider
+        route_step.response["llm_provider_resolved"] = resolved_provider
         steps.append(route_step)
 
-        target_agent = agent_registry.get(decision.agent_name)
+        if decision.agent_name == "reviews_agent":
+            provider_chat_service = chat_services_by_provider.get(resolved_provider)
+            if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+                return ExecuteResponse(
+                    status="error",
+                    error=(
+                        f"Requested llm_provider '{resolved_provider}' is not configured. "
+                        f"Set required provider env vars and retry."
+                    ),
+                    response=None,
+                    steps=steps,
+                )
+            target_agent = reviews_agents_by_provider.get(resolved_provider)
+            if target_agent is None:
+                target_agent = reviews_agents_by_provider.get(default_chat_provider)
+        elif decision.agent_name == "mail_agent":
+            provider_chat_service = chat_services_by_provider.get(resolved_provider)
+            if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+                return ExecuteResponse(
+                    status="error",
+                    error=(
+                        f"Requested llm_provider '{resolved_provider}' is not configured. "
+                        f"Set required provider env vars and retry."
+                    ),
+                    response=None,
+                    steps=steps,
+                )
+            target_agent = mail_agents_by_provider.get(resolved_provider)
+            if target_agent is None:
+                target_agent = mail_agents_by_provider.get(default_chat_provider)
+        else:
+            # market_watch is deterministic and does not use chat provider override.
+            target_agent = agent_registry.get(decision.agent_name)
+
         if target_agent is None:
             raise HTTPException(status_code=500, detail=f"No agent registered as '{decision.agent_name}'")
 
@@ -1160,18 +1260,143 @@ def update_mail_settings(payload: MailSettingsUpdateRequest) -> MailSettingsResp
         )
 
 
+def _history_id_as_int(value: str) -> int | None:
+    """Parse Gmail history IDs safely for max/coalescing comparisons."""
+
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _enqueue_mail_push_history(history_id: str) -> bool:
+    """Store latest pending history ID and return True when worker should start."""
+
+    global _push_worker_running, _pending_push_history_id
+
+    normalized = str(history_id).strip()
+    if not normalized:
+        return False
+
+    with _push_worker_state_lock:
+        if _pending_push_history_id is None:
+            _pending_push_history_id = normalized
+        else:
+            current_int = _history_id_as_int(_pending_push_history_id)
+            incoming_int = _history_id_as_int(normalized)
+            if current_int is None or incoming_int is None or incoming_int >= current_int:
+                _pending_push_history_id = normalized
+
+        if _push_worker_running:
+            return False
+        _push_worker_running = True
+        return True
+
+
+def _take_pending_mail_push_history() -> str | None:
+    """Pop one pending history ID for worker processing."""
+
+    global _pending_push_history_id
+    with _push_worker_state_lock:
+        value = _pending_push_history_id
+        _pending_push_history_id = None
+        return value
+
+
+def _mark_mail_push_worker_idle_if_drained() -> bool:
+    """Set worker as idle only when queue is still empty."""
+
+    global _push_worker_running
+    with _push_worker_state_lock:
+        if _pending_push_history_id is None:
+            _push_worker_running = False
+            return True
+        return False
+
+
+def _process_mail_push_history(history_id: str) -> None:
+    """Run one serialized push-processing cycle for one target history ID."""
+
+    # Serialize Gmail API access — httplib2 is not thread-safe.
+    with _push_lock:
+        db_url = settings.database_url
+        state = get_push_state(db_url)
+        last_history_id = state.get("history_id") if state else None
+        if not last_history_id:
+            set_push_state(db_url, str(history_id))
+            return
+
+        # Advance history cursor immediately so the worker can coalesce bursts
+        # without re-fetching old batches.
+        set_push_state(db_url, str(history_id))
+
+        try:
+            messages = gmail_service.list_messages_since_history(last_history_id)
+        except Exception as exc:
+            if "404" in str(exc) or "history" in str(exc).lower():
+                return
+            logger.warning("mail push: list_messages_since_history failed: %s", exc)
+            return
+
+        if not messages:
+            return
+
+        result = mail_agent.run_on_messages(messages)
+        actions = result.mail_actions or []
+        prefs = get_mail_preferences(db_url)
+        auto_send = prefs.get("auto_send_good_reviews", False)
+        auto_send_failed = False
+        actions_needing_notify: list[dict] = []
+        for action in actions:
+            if not action.get("requires_owner"):
+                continue
+            # Stop auto-sending after first failure (likely 429 rate limit).
+            if auto_send and not auto_send_failed:
+                if _try_auto_send_good_review(action, gmail_service):
+                    continue
+                # Only flag as failed if it was a sendable good review.
+                if (
+                    action.get("category") == "new_property_review"
+                    and (action.get("rating") or 0) > 3
+                    and action.get("draft")
+                ):
+                    auto_send_failed = True
+            notification_store.add_notification(action)
+            actions_needing_notify.append(action)
+        if actions_needing_notify:
+            _notify_owner_for_mail_actions(
+                actions_needing_notify,
+                gmail_service,
+                settings.mail_owner_notify_email,
+                settings.app_base_url,
+            )
+
+
+def _mail_push_worker() -> None:
+    """Process coalesced Gmail push notifications without blocking request threads."""
+
+    while True:
+        history_id = _take_pending_mail_push_history()
+        if history_id is None:
+            if _mark_mail_push_worker_idle_if_drained():
+                return
+            continue
+        try:
+            _process_mail_push_history(history_id)
+        except Exception as exc:
+            logger.warning("mail push worker cycle failed: %s: %s", type(exc).__name__, exc)
+
+
 @app.post("/api/mail/push")
 def mail_push(
     request: Request,
     x_gmail_push_secret: str | None = Header(default=None, alias="X-Gmail-Push-Secret"),
     payload: dict | None = Body(default=None),
 ) -> dict[str, str]:
-    """Gmail push webhook: decode Pub/Sub notification, fetch new messages, run pipeline, notify owner if needed. Always returns 200.
+    """Gmail push webhook.
 
-    NOTE: This is intentionally a sync ``def`` (not ``async def``) so that
-    FastAPI runs it in a threadpool worker. The heavy work inside — LLM
-    calls, Gmail API, Postgres — is all synchronous and would block the
-    event loop if this were async, starving other requests like the UI.
+    Request path stays fast: it validates and enqueues latest history ID, then
+    a single background worker performs Gmail/LLM/DB processing.
     """
     try:
         body = payload or {}
@@ -1198,51 +1423,13 @@ def mail_push(
             return {"status": "ok"}
         if not settings.mail_enabled or not settings.mail_push_enabled:
             return {"status": "ok"}
-        # Serialize Gmail API access — httplib2 is not thread-safe.
-        with _push_lock:
-            db_url = settings.database_url
-            state = get_push_state(db_url)
-            last_history_id = state.get("history_id") if state else None
-            if not last_history_id:
-                set_push_state(db_url, str(history_id))
-                return {"status": "ok"}
-            # Advance history cursor immediately so concurrent pushes don't
-            # re-fetch the same batch (send_reply triggers another push).
-            set_push_state(db_url, str(history_id))
-            try:
-                messages = gmail_service.list_messages_since_history(last_history_id)
-            except Exception as exc:
-                if "404" in str(exc) or "history" in str(exc).lower():
-                    return {"status": "ok"}
-                logger.warning("mail push: list_messages_since_history failed: %s", exc)
-                return {"status": "ok"}
-            if messages:
-                result = mail_agent.run_on_messages(messages)
-                actions = result.mail_actions or []
-                prefs = get_mail_preferences(db_url)
-                auto_send = prefs.get("auto_send_good_reviews", False)
-                auto_send_failed = False
-                actions_needing_notify: list[dict] = []
-                for action in actions:
-                    if not action.get("requires_owner"):
-                        continue
-                    # Stop auto-sending after first failure (likely 429 rate limit).
-                    if auto_send and not auto_send_failed:
-                        if _try_auto_send_good_review(action, gmail_service):
-                            continue
-                        else:
-                            # Only flag as failed if it was a sendable good review.
-                            if action.get("category") == "new_property_review" and (action.get("rating") or 0) > 3 and action.get("draft"):
-                                auto_send_failed = True
-                    notification_store.add_notification(action)
-                    actions_needing_notify.append(action)
-                if actions_needing_notify:
-                    _notify_owner_for_mail_actions(
-                        actions_needing_notify,
-                        gmail_service,
-                        settings.mail_owner_notify_email,
-                        settings.app_base_url,
-                    )
+        start_worker = _enqueue_mail_push_history(str(history_id))
+        if start_worker:
+            threading.Thread(
+                target=_mail_push_worker,
+                daemon=True,
+                name="gmail-push-worker",
+            ).start()
     except HTTPException:
         raise
     except Exception as exc:

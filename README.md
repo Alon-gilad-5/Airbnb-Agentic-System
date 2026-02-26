@@ -67,6 +67,20 @@ Recommended:
 - `SCRAPING_QUARANTINE_NAMESPACE=airbnb-reviews-web-quarantine`
 - `TICKETMASTER_API_KEY=` (required for event signals)
 
+Chat provider selection (chat-completions only):
+
+- `LLM_CHAT_PROVIDER=llmod` (`llmod` or `openrouter`)
+- `OPENROUTER_API_KEY=` (required when using `openrouter`)
+- `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+- `OPENROUTER_CHAT_MODEL=openai/gpt-4o-mini`
+- `OPENROUTER_HTTP_REFERER=` (optional attribution header)
+- `OPENROUTER_APP_TITLE=` (optional attribution header)
+
+Notes:
+
+- Embeddings and Pinecone retrieval stay on the existing LLMOD embedding configuration.
+- You can override chat provider per request with `llm_provider` in `POST /api/execute`.
+
 Active owner/property defaults (used when request omits context fields):
 
 - `ACTIVE_OWNER_ID`
@@ -137,6 +151,15 @@ Ask via `/api/execute` (router sends market-intel prompts to `market_watch_agent
 ```json
 {
   "prompt": "Are there any nearby events next week that could increase demand?"
+}
+```
+
+Force chat provider for one request:
+
+```json
+{
+  "prompt": "What do guests think about wifi reliability?",
+  "llm_provider": "openrouter"
 }
 ```
 

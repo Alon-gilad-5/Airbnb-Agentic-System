@@ -34,6 +34,13 @@ class ExecuteRequest(BaseModel):
     """Input schema for `POST /api/execute`."""
 
     prompt: str = Field(min_length=1, description="User request text")
+    llm_provider: Literal["default", "llmod", "openrouter"] | None = Field(
+        default=None,
+        description=(
+            "Optional chat provider override for this request. "
+            "Use 'default' or omit to use deployment default."
+        ),
+    )
     property_id: str | None = Field(default=None, description="Known internal property identifier")
     property_name: str | None = Field(default=None, description="Property display name")
     city: str | None = Field(default=None, description="Property city")

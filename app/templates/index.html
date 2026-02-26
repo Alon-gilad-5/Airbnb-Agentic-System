@@ -23,6 +23,14 @@
     .nav a.active { background:rgba(31,95,139,0.14); }
     button { background:linear-gradient(90deg,var(--accent),var(--accent2)); color:#fff; border:0; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
     button:disabled { opacity:0.5; cursor:default; }
+    select {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+      color: var(--ink);
+    }
     .muted { color:var(--muted); font-size:0.9rem; }
     textarea {
       width: 100%;
@@ -153,6 +161,12 @@
       <label for="prompt"><strong>Prompt</strong></label>
       <textarea id="prompt" aria-label="Agent prompt" placeholder="Example: What do guests think about wifi signal in Santa Clara?"></textarea>
       <div class="row">
+        <label for="llmProvider" class="muted">Provider</label>
+        <select id="llmProvider" aria-label="LLM provider">
+          <option value="default">Default</option>
+          <option value="llmod">LLMOD</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
         <button id="runBtn">Run Agent</button>
         <span id="status" class="muted">Idle</span>
       </div>
@@ -172,10 +186,22 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     const promptEl = document.getElementById("prompt");
+    const providerEl = document.getElementById("llmProvider");
     const runBtn = document.getElementById("runBtn");
     const statusEl = document.getElementById("status");
     const finalEl = document.getElementById("finalResponse");
     const stepsEl = document.getElementById("steps");
+    const LLM_PROVIDER_STORAGE_KEY = "reviews_console_llm_provider";
+    const allowedProviders = new Set(["default", "llmod", "openrouter"]);
+
+    try {
+      const storedProvider = localStorage.getItem(LLM_PROVIDER_STORAGE_KEY);
+      if (storedProvider && allowedProviders.has(storedProvider)) {
+        providerEl.value = storedProvider;
+      }
+    } catch (err) {
+      // Ignore storage errors in restricted browser contexts.
+    }
 
     function escHtml(s) {
       const d = document.createElement("div");
@@ -274,6 +300,12 @@
         statusEl.textContent = "Please enter a prompt.";
         return;
       }
+      const provider = allowedProviders.has(providerEl.value) ? providerEl.value : "default";
+      try {
+        localStorage.setItem(LLM_PROVIDER_STORAGE_KEY, provider);
+      } catch (err) {
+        // Ignore storage errors in restricted browser contexts.
+      }
 
       runBtn.disabled = true;
       statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Running...';
@@ -284,7 +316,7 @@
         const res = await fetch("/api/execute", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({prompt}),
+          body: JSON.stringify({prompt, llm_provider: provider}),
         });
         const data = await res.json();
         if (data.status === "error") {

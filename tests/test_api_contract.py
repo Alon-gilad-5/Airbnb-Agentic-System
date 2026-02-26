@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.router_agent import RouterAgent
+from app.schemas import ExecuteRequest
 from app.services.pinecone_retriever import RetrievedReview
 from app.services.web_review_ingest import WebIngestResult
 from app.services.web_review_scraper import ScrapedReview
@@ -91,6 +93,24 @@ class DummyProviders:
 class DummyAlertStore:
     def insert_alerts(self, records: list) -> int:
         return len(records)
+
+
+# -- API schema contract tests --
+
+
+def test_execute_request_without_provider_is_valid() -> None:
+    payload = ExecuteRequest(prompt="What do guests say about wifi?")
+    assert payload.llm_provider is None
+
+
+def test_execute_request_with_openrouter_provider_is_valid() -> None:
+    payload = ExecuteRequest(prompt="What do guests say about wifi?", llm_provider="openrouter")
+    assert payload.llm_provider == "openrouter"
+
+
+def test_execute_request_with_invalid_provider_fails_validation() -> None:
+    with pytest.raises(ValidationError):
+        ExecuteRequest(prompt="What do guests say about wifi?", llm_provider="invalid-provider")  # type: ignore[arg-type]
 
 
 # -- Reviews Agent contract tests --

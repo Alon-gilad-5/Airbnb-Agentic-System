@@ -40,7 +40,13 @@ class Settings:
     students: list[TeamStudent]
     llmod_api_key: str | None
     base_url: str | None
+    llm_chat_provider: str
     chat_model: str
+    openrouter_api_key: str | None
+    openrouter_base_url: str
+    openrouter_chat_model: str
+    openrouter_http_referer: str | None
+    openrouter_app_title: str | None
     chat_max_output_tokens: int
     embedding_model: str
     embedding_deployment: str
@@ -155,6 +161,8 @@ def load_settings() -> Settings:
         ),
     ]
 
+    raw_chat_provider = os.getenv("LLM_CHAT_PROVIDER", "llmod").strip().lower()
+    llm_chat_provider = raw_chat_provider if raw_chat_provider in {"llmod", "openrouter"} else "llmod"
     embedding_model = os.getenv("EMBEDDING_MODEL", "RPRTHPB-text-embedding-3-small")
     return Settings(
         group_batch_order_number=os.getenv("GROUP_BATCH_ORDER_NUMBER", "00_00"),
@@ -162,7 +170,13 @@ def load_settings() -> Settings:
         students=students,
         llmod_api_key=os.getenv("LLMOD_API_KEY"),
         base_url=os.getenv("BASE_URL"),
+        llm_chat_provider=llm_chat_provider,
         chat_model=os.getenv("CHAT_MODEL", "RPRTHPB-gpt-5-mini"),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openrouter_base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        openrouter_chat_model=os.getenv("OPENROUTER_CHAT_MODEL", "openai/gpt-4o-mini"),
+        openrouter_http_referer=os.getenv("OPENROUTER_HTTP_REFERER"),
+        openrouter_app_title=os.getenv("OPENROUTER_APP_TITLE"),
         chat_max_output_tokens=int(os.getenv("CHAT_MAX_OUTPUT_TOKENS", "180")),
         embedding_model=embedding_model,
         embedding_deployment=os.getenv("EMBEDDING_DEPLOYMENT", embedding_model),
