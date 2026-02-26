@@ -1024,11 +1024,16 @@ def mail_inbox() -> MailInboxResponse:
                 if mail_actions:
                     prefs = get_mail_preferences(settings.database_url)
                     auto_send = prefs.get("auto_send_good_reviews", False)
+                    auto_send_failed = False
                     for action in mail_actions:
                         if not action.get("requires_owner"):
                             continue
-                        if auto_send and _try_auto_send_good_review(action, gmail_service):
-                            continue
+                        # Stop auto-sending after first failure (likely 429 rate limit).
+                        if auto_send and not auto_send_failed:
+                            if _try_auto_send_good_review(action, gmail_service):
+                                continue
+                            elif action.get("category") == "new_property_review" and (action.get("rating") or 0) > 3 and action.get("draft"):
+                                auto_send_failed = True
                         notification_store.add_notification(action)
         except Exception as proc_exc:
             logger.warning("mail inbox auto-process failed: %s", proc_exc)
@@ -1196,12 +1201,19 @@ async def mail_push(
             actions = result.mail_actions or []
             prefs = get_mail_preferences(db_url)
             auto_send = prefs.get("auto_send_good_reviews", False)
+            auto_send_failed = False
             actions_needing_notify: list[dict] = []
             for action in actions:
                 if not action.get("requires_owner"):
                     continue
-                if auto_send and _try_auto_send_good_review(action, gmail_service):
-                    continue
+                # Stop auto-sending after first failure (likely 429 rate limit).
+                if auto_send and not auto_send_failed:
+                    if _try_auto_send_good_review(action, gmail_service):
+                        continue
+                    else:
+                        # Only flag as failed if it was a sendable good review.
+                        if action.get("category") == "new_property_review" and (action.get("rating") or 0) > 3 and action.get("draft"):
+                            auto_send_failed = True
                 notification_store.add_notification(action)
                 actions_needing_notify.append(action)
             if actions_needing_notify:
