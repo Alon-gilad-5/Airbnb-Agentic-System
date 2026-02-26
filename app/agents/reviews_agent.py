@@ -303,6 +303,8 @@ class ReviewsPipeline:
         if is_comparison:
             state = self._apply(state, self.neighbor_retrieve.invoke(state))
             state = self._apply(state, self.comparison_answer.invoke(state))
+            if not state.get("should_answer", True):
+                return state
             state = self._apply(state, self.finalize.invoke(state))
             return state
 
@@ -620,8 +622,18 @@ class ReviewsPipeline:
         ctx = state.get("context") or {}
         property_id = _context_str(ctx, "property_id") or "unknown"
 
-        owner_relevant = [m for m in owner_matches if m.score >= cfg.relevance_score_threshold]
-        neighbor_relevant = [m for m in neighbor_matches if m.score >= cfg.relevance_score_threshold]
+        # For comparison, use a lower threshold to keep partial evidence useful.
+        # If strict filtering leaves nothing, fall back to top matches by score.
+        comparison_threshold = cfg.relevance_score_threshold * 0.75
+        owner_relevant = [m for m in owner_matches if m.score >= comparison_threshold]
+        neighbor_relevant = [m for m in neighbor_matches if m.score >= comparison_threshold]
+
+        # If threshold filtering emptied owner despite having raw matches, keep top ones
+        if not owner_relevant and owner_matches:
+            owner_relevant = sorted(owner_matches, key=lambda m: m.score, reverse=True)[:cfg.max_context_reviews]
+        if not neighbor_relevant and neighbor_matches:
+            neighbor_relevant = sorted(neighbor_matches, key=lambda m: m.score, reverse=True)[:cfg.max_context_reviews]
+
         all_relevant = owner_relevant + neighbor_relevant
         evidence_count = len(all_relevant)
 
