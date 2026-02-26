@@ -442,8 +442,13 @@ class MailPipeline:
         raw_messages: list[EmailMessage] = state.get("raw_messages") or []
         airbnb: list[EmailMessage] = []
         non_airbnb_count = 0
+        self_sent_count = 0
 
         for msg in raw_messages:
+            # Skip messages sent by the owner (SENT label) to prevent reply loops.
+            if "SENT" in msg.labels:
+                self_sent_count += 1
+                continue
             if self._gmail.is_airbnb_sender(msg.sender):
                 airbnb.append(msg)
             else:
@@ -458,6 +463,7 @@ class MailPipeline:
                     response={
                         "airbnb_count": len(airbnb),
                         "non_airbnb_ignored": non_airbnb_count,
+                        "self_sent_skipped": self_sent_count,
                     },
                 )
             ],

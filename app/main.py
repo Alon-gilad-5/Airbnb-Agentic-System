@@ -96,11 +96,15 @@ embedding_service = EmbeddingService(
     model=settings.embedding_model,
     deployment=settings.embedding_deployment,
 )
-retriever = PineconeRetriever(
-    api_key=settings.pinecone_api_key,
-    index_name=settings.pinecone_index_name,
-    namespace=settings.pinecone_namespace,
-)
+try:
+    retriever = PineconeRetriever(
+        api_key=settings.pinecone_api_key,
+        index_name=settings.pinecone_index_name,
+        namespace=settings.pinecone_namespace,
+    )
+except Exception as exc:
+    logger.warning("PineconeRetriever init failed, reviews will be unavailable: %s", exc)
+    retriever = PineconeRetriever(api_key=None, index_name="", namespace="")
 chat_service = ChatService(
     api_key=settings.llmod_api_key,
     base_url=settings.base_url,
@@ -125,13 +129,19 @@ web_scraper = PlaywrightReviewScraper(
     gmaps_scroll_pause_ms=settings.scraping_gmaps_scroll_pause_ms,
     gmaps_nav_timeout_ms=settings.scraping_gmaps_nav_timeout_ms,
 )
-web_ingest_service = WebReviewIngestService(
-    enabled=settings.scraping_quarantine_upsert_enabled,
-    pinecone_api_key=settings.pinecone_api_key,
-    index_name=settings.pinecone_index_name,
-    namespace=settings.scraping_quarantine_namespace,
-    embedding_service=embedding_service,
-)
+try:
+    web_ingest_service = WebReviewIngestService(
+        enabled=settings.scraping_quarantine_upsert_enabled,
+        pinecone_api_key=settings.pinecone_api_key,
+        index_name=settings.pinecone_index_name,
+        namespace=settings.scraping_quarantine_namespace,
+        embedding_service=embedding_service,
+    )
+except Exception as exc:
+    logger.warning("WebReviewIngestService init failed: %s", exc)
+    web_ingest_service = WebReviewIngestService(
+        enabled=False, pinecone_api_key=None, index_name="", namespace="", embedding_service=embedding_service,
+    )
 market_data_providers = MarketDataProviders(
     ticketmaster_api_key=settings.ticketmaster_api_key,
     timeout_seconds=20,
@@ -1171,11 +1181,13 @@ async def mail_push(
         if not last_history_id:
             set_push_state(db_url, str(history_id))
             return {"status": "ok"}
+        # Advance history cursor immediately so concurrent pushes don't
+        # re-fetch the same batch (send_reply triggers another push).
+        set_push_state(db_url, str(history_id))
         try:
             messages = gmail_service.list_messages_since_history(last_history_id)
         except Exception as exc:
             if "404" in str(exc) or "history" in str(exc).lower():
-                set_push_state(db_url, str(history_id))
                 return {"status": "ok"}
             logger.warning("mail push: list_messages_since_history failed: %s", exc)
             return {"status": "ok"}
@@ -1199,7 +1211,6 @@ async def mail_push(
                     settings.mail_owner_notify_email,
                     settings.app_base_url,
                 )
-        set_push_state(db_url, str(history_id))
     except HTTPException:
         raise
     except Exception as exc:
