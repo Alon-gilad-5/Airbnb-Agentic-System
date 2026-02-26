@@ -4,62 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mail Agent Console</title>
+  <link rel="stylesheet" href="/static/base.css">
   <style>
-    :root {
-      --bg: #eef3f7;
-      --panel: #ffffff;
-      --ink: #1f2f39;
-      --muted: #617482;
-      --accent: #0f766e;
-      --accent2: #1f5f8b;
-      --border: #d6e0e8;
-      --warn: #b45309;
-      --danger: #dc2626;
-      --success: #16a34a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      background: linear-gradient(145deg, #e8eff4, #f7fbfd);
-      color: var(--ink);
-      padding: 24px;
-    }
-    .layout { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px;
-    }
-    h1 { margin: 0 0 6px 0; font-size: 1.5rem; }
-    h2 { margin: 0 0 10px; }
-    p { margin: 0; color: var(--muted); }
-    .nav { display: flex; gap: 12px; margin-bottom: 4px; }
-    .nav a {
-      color: var(--accent2);
-      text-decoration: none;
-      font-weight: 600;
-      padding: 4px 8px;
-      border-radius: 6px;
-    }
-    .nav a:hover { background: var(--bg); }
-    button {
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      color: #fff;
-      border: 0;
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button:disabled { opacity: 0.5; cursor: default; }
-    button.secondary {
-      background: var(--bg);
-      color: var(--ink);
-      border: 1px solid var(--border);
-    }
-    .muted { color: var(--muted); font-size: 0.9rem; }
+    /* Base typography/layout/button/nav styles live in /static/base.css */
     .badge {
       display: inline-block;
       padding: 2px 8px;
@@ -221,7 +168,34 @@
       padding: 10px;
       background: #fcfeff;
     }
-    .step h3 { margin: 0 0 6px 0; font-size: 1rem; }
+    .step details { padding: 8px 10px; }
+    .step summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+    .step summary::-webkit-details-marker { display: none; }
+    .module-badge {
+      font-size: 0.8rem;
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .json .k { color: #0f766e; }
+    .json .s { color: #1e40af; }
+    .json .n { color: #92400e; }
+    .json .b { color: #6d28d9; }
+    .json .nl { color: #9f1239; }
+    .confirm-send {
+      background: linear-gradient(90deg, #b91c1c, #991b1b);
+    }
+    #latestActionSummary {
+      margin-top: 8px;
+    }
 
     /* Empty state */
     .empty-state {
@@ -265,6 +239,11 @@
     .inbox-toggle:hover { color: var(--accent); }
     .settings-checkbox { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem; }
     .settings-checkbox input { cursor: pointer; }
+    @media (max-width: 768px) {
+      .notif-header { flex-direction: column; }
+      .email-actions { width: 100%; }
+      .draft-box textarea.action-text { min-height: 80px; }
+    }
   </style>
 </head>
 <body>
@@ -272,14 +251,14 @@
     <section class="card">
       <div class="nav">
         <a href="/">Reviews Console</a>
-        <a href="/mail">Mail Console</a>
+        <a href="/mail" class="active" aria-current="page">Mail Console</a>
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
         <h1>Mail Agent Console</h1>
-        <span id="notifCount" class="badge-count" style="display:none;">0</span>
+        <span id="notifCount" class="badge-count" style="display:none;" aria-label="Pending notifications count">0</span>
       </div>
       <p>
-        <span class="conn-dot disconnected" id="connDot"></span>
+        <span class="conn-dot disconnected" id="connDot" role="img" aria-label="Mail connection status"></span>
         <span id="connLabel" class="muted">Connecting...</span>
       </p>
       <p style="margin-top:10px;">
@@ -301,10 +280,12 @@
     </section>
 
     <section class="card" id="resultSection" style="display:none;">
-      <h2>Action Result</h2>
-      <pre id="actionResult"></pre>
-      <h3 style="margin-top:12px;">Steps</h3>
-      <div id="actionSteps" class="steps"></div>
+      <h2>Latest Action Details</h2>
+      <div id="latestActionSummary" class="muted">No actions yet.</div>
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-weight:600;">Show action steps</summary>
+        <div id="actionSteps" class="steps" style="margin-top:10px;"></div>
+      </details>
     </section>
 
     <section class="card">
@@ -317,6 +298,7 @@
       </div>
     </section>
   </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
     const notifList = document.getElementById("notifList");
@@ -325,15 +307,17 @@
     const connDot = document.getElementById("connDot");
     const connLabel = document.getElementById("connLabel");
     const resultSection = document.getElementById("resultSection");
-    const actionResult = document.getElementById("actionResult");
+    const latestActionSummary = document.getElementById("latestActionSummary");
     const actionSteps = document.getElementById("actionSteps");
     const inboxToggle = document.getElementById("inboxToggle");
     const inboxSection = document.getElementById("inboxSection");
     const inboxList = document.getElementById("inboxList");
     const autoSendGoodReviewsCheckbox = document.getElementById("autoSendGoodReviews");
+    const toast = document.getElementById("toast");
 
     const notifications = {};
     const emailActionCache = {};
+    const sendConfirmTimers = {};
     let inboxItems = [];
 
     const COMMON_ISSUES = [
@@ -349,6 +333,28 @@
       const d = document.createElement("div");
       d.textContent = str || "";
       return d.innerHTML;
+    }
+
+    function jsonHighlighted(obj) {
+      const json = JSON.stringify(obj ?? {}, null, 2);
+      return escHtml(json).replace(
+        /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,
+        (match) => {
+          let cls = "n";
+          if (/^"/.test(match)) cls = /:$/.test(match) ? "k" : "s";
+          else if (/true|false/.test(match)) cls = "b";
+          else if (/null/.test(match)) cls = "nl";
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+    }
+
+    function showToast(message, kind = "ok") {
+      toast.className = `toast ${kind} show`;
+      toast.textContent = message;
+      window.setTimeout(() => {
+        toast.className = `toast ${kind}`;
+      }, 4000);
     }
 
     function timeAgo(isoStr) {
@@ -564,7 +570,7 @@
               ${notif.created_at ? " \u00b7 " + timeAgo(notif.created_at) : ""}
             </div>
           </div>
-          <button class="notif-dismiss" title="Dismiss">&times;</button>
+          <button class="notif-dismiss" title="Dismiss" aria-label="Dismiss notification">&times;</button>
         </div>
         ${summary ? `<div class="notif-summary">${escHtml(summary)}</div>` : ""}
         ${draftPreview ? `<div class="draft-box" style="margin-top:8px;"><strong>Draft:</strong> ${escHtml(draftPreview)}</div>` : ""}
@@ -613,6 +619,7 @@
       card.querySelectorAll(".rating-btn").forEach(btn => {
         if (btn._bound) return;
         btn._bound = true;
+        btn.setAttribute("aria-label", `Rate guest ${btn.dataset.rating} out of 5`);
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
           const group = btn.closest(".rating-group");
@@ -680,20 +687,34 @@
       card.querySelectorAll(".approve-send-btn").forEach(btn => {
         if (btn._bound) return;
         btn._bound = true;
+        btn.dataset.confirmed = "false";
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (btn.dataset.confirmed !== "true") {
+            btn.dataset.confirmed = "true";
+            btn.classList.add("confirm-send");
+            btn.textContent = "Confirm send?";
+            const emailIdForTimer = btn.dataset.emailId;
+            if (sendConfirmTimers[emailIdForTimer]) {
+              window.clearTimeout(sendConfirmTimers[emailIdForTimer]);
+            }
+            sendConfirmTimers[emailIdForTimer] = window.setTimeout(() => {
+              btn.dataset.confirmed = "false";
+              btn.classList.remove("confirm-send");
+              btn.textContent = "Approve and send";
+            }, 5000);
+            return;
+          }
           const emailId = btn.dataset.emailId;
           const action = emailActionCache[emailId];
           if (!action || !action.thread_id || !action.reply_to) {
-            resultSection.style.display = "block";
-            actionResult.textContent = "Missing reply metadata; try generating options again.";
+            showToast("Missing reply metadata; try generating options again.", "error");
             return;
           }
           const draftEl = card.querySelector(`.draft-edit[data-email-id="${emailId}"]`);
           const draftText = draftEl ? draftEl.value.trim() : (action.draft || "");
           if (!draftText) {
-            resultSection.style.display = "block";
-            actionResult.textContent = "Draft is empty.";
+            showToast("Draft is empty.", "error");
             return;
           }
           submitMailAction(emailId, "approve_response", {
@@ -733,7 +754,7 @@
 
     async function submitMailAction(emailId, actionType, extra) {
       resultSection.style.display = "block";
-      actionResult.textContent = "Processing...";
+      latestActionSummary.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Processing...';
       actionSteps.innerHTML = "";
 
       const body = { email_id: emailId, action_type: actionType, ...extra };
@@ -745,7 +766,13 @@
           body: JSON.stringify(body),
         });
         const data = await res.json();
-        actionResult.textContent = data.response ?? `(error) ${data.error}`;
+        const responseText = data.response ?? `(error) ${data.error}`;
+        latestActionSummary.textContent = responseText;
+        if (data.status === "ok") {
+          showToast(responseText || "Action completed.", "ok");
+        } else {
+          showToast(responseText || "Action failed.", "error");
+        }
         renderSteps(data.steps || [], actionSteps);
 
         if (data.mail_actions && data.mail_actions.length) {
@@ -767,7 +794,9 @@
           }
         }
       } catch (err) {
-        actionResult.textContent = String(err);
+        const message = String(err);
+        latestActionSummary.textContent = message;
+        showToast(message, "error");
       }
     }
 
@@ -793,11 +822,16 @@
         const div = document.createElement("div");
         div.className = "step";
         div.innerHTML = `
-          <h3>${escHtml(step.module)}</h3>
-          <strong>prompt</strong>
-          <pre>${JSON.stringify(step.prompt, null, 2)}</pre>
-          <strong>response</strong>
-          <pre>${JSON.stringify(step.response, null, 2)}</pre>`;
+          <details>
+            <summary>
+              <span class="module-badge">${escHtml(step.module || "module")}</span>
+              <span>Step details</span>
+            </summary>
+            <strong>prompt</strong>
+            <pre class="json">${jsonHighlighted(step.prompt)}</pre>
+            <strong>response</strong>
+            <pre class="json">${jsonHighlighted(step.response)}</pre>
+          </details>`;
         container.appendChild(div);
       }
     }

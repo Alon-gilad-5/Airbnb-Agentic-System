@@ -4,44 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reviews Agent Console</title>
+  <link rel="stylesheet" href="/static/base.css">
   <style>
-    :root {
-      --bg: #eef3f7;
-      --panel: #ffffff;
-      --ink: #1f2f39;
-      --muted: #617482;
-      --accent: #0f766e;
-      --accent2: #1f5f8b;
-      --border: #d6e0e8;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      background: linear-gradient(145deg, #e8eff4, #f7fbfd);
-      color: var(--ink);
-      padding: 24px;
-    }
-    .layout {
-      max-width: 1100px;
-      margin: 0 auto;
-      display: grid;
-      gap: 16px;
-    }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px;
-    }
-    h1 {
-      margin: 0 0 6px 0;
-      font-size: 1.5rem;
-    }
-    p {
-      margin: 0;
-      color: var(--muted);
-    }
     textarea {
       width: 100%;
       min-height: 130px;
@@ -58,33 +22,18 @@
       margin-top: 10px;
       align-items: center;
     }
-    button {
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      color: #fff;
-      border: 0;
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .muted {
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-    pre {
-      background: #f8fbfe;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin: 0;
-    }
     .answer-section {
-      font-size: 1.05rem;
+      font-size: 1.02rem;
       line-height: 1.6;
       color: var(--ink);
+    }
+    .answer-section p {
+      color: var(--ink);
+      margin: 0 0 10px 0;
+    }
+    .answer-section ul,
+    .answer-section ol {
+      margin: 0 0 10px 18px;
     }
     .evidence-toggle {
       background: none;
@@ -129,29 +78,61 @@
     .step {
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px;
       background: #fcfeff;
+      overflow: hidden;
     }
-    .step h3 {
-      margin: 0 0 6px 0;
-      font-size: 1rem;
+    .step details {
+      padding: 8px 10px;
     }
+    .step summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+    .step summary::-webkit-details-marker {
+      display: none;
+    }
+    .module-badge {
+      font-size: 0.8rem;
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    pre {
+      background: #f8fbfe;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      margin: 6px 0 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .json .k { color: #0f766e; }
+    .json .s { color: #1e40af; }
+    .json .n { color: #92400e; }
+    .json .b { color: #6d28d9; }
+    .json .nl { color: #9f1239; }
   </style>
 </head>
 <body>
   <main class="layout">
     <section class="card">
-      <div style="display:flex; gap:12px; margin-bottom:4px;">
-        <a href="/" style="color:#1f5f8b; text-decoration:none; font-weight:600; padding:4px 8px; border-radius:6px;">Reviews Console</a>
-        <a href="/mail" style="color:#1f5f8b; text-decoration:none; font-weight:600; padding:4px 8px; border-radius:6px;">Mail Console</a>
+      <div class="nav">
+        <a href="/" class="active" aria-current="page">Reviews Console</a>
+        <a href="/mail">Mail Console</a>
       </div>
       <h1>Reviews Agent Console</h1>
-      <p>Enter a business question, run the agent, inspect response + full steps trace.</p>
+      <p>Enter a business question, run the agent, and inspect response + full steps trace.</p>
     </section>
 
     <section class="card">
       <label for="prompt"><strong>Prompt</strong></label>
-      <textarea id="prompt" placeholder="Example: What do guests think about wifi signal in Santa Clara?"></textarea>
+      <textarea id="prompt" aria-label="Agent prompt" placeholder="Example: What do guests think about wifi signal in Santa Clara?"></textarea>
       <div class="row">
         <button id="runBtn">Run Agent</button>
         <span id="status" class="muted">Idle</span>
@@ -169,6 +150,7 @@
     </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     const promptEl = document.getElementById("prompt");
     const runBtn = document.getElementById("runBtn");
@@ -178,19 +160,37 @@
 
     function escHtml(s) {
       const d = document.createElement("div");
-      d.textContent = s;
+      d.textContent = s || "";
       return d.innerHTML;
     }
 
+    function jsonHighlighted(obj) {
+      const json = JSON.stringify(obj ?? {}, null, 2);
+      return escHtml(json).replace(
+        /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,
+        (match) => {
+          let cls = "n";
+          if (/^"/.test(match)) cls = /:$/.test(match) ? "k" : "s";
+          else if (/true|false/.test(match)) cls = "b";
+          else if (/null/.test(match)) cls = "nl";
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+    }
+
     function renderResponse(raw) {
-      if (!raw) { finalEl.innerHTML = '<p class="muted">No response.</p>'; return; }
+      if (!raw) {
+        finalEl.innerHTML = '<p class="muted">No response.</p>';
+        return;
+      }
 
       const evSep = "---EVIDENCE---";
       const citSep = "---CITATIONS---";
       const hasStructure = raw.includes(evSep);
 
       if (!hasStructure) {
-        finalEl.innerHTML = `<div class="answer-section">${escHtml(raw)}</div>`;
+        const markdown = marked.parse(raw, { breaks: true });
+        finalEl.innerHTML = `<div class="answer-section">${markdown}</div>`;
         return;
       }
 
@@ -199,14 +199,13 @@
       let citationLines = [];
       if (rest && rest.includes(citSep)) {
         const [evPart, citPart] = rest.split(citSep, 2);
-        evidenceLines = evPart.trim().split("\n").filter(l => l.trim());
-        citationLines = citPart.trim().split("\n").filter(l => l.trim());
+        evidenceLines = evPart.trim().split("\n").filter((l) => l.trim());
+        citationLines = citPart.trim().split("\n").filter((l) => l.trim());
       } else if (rest) {
-        evidenceLines = rest.trim().split("\n").filter(l => l.trim());
+        evidenceLines = rest.trim().split("\n").filter((l) => l.trim());
       }
 
-      let html = `<div class="answer-section">${escHtml(answerPart.trim())}</div>`;
-
+      let html = `<div class="answer-section">${marked.parse(answerPart.trim(), { breaks: true })}</div>`;
       if (evidenceLines.length) {
         html += `<button class="evidence-toggle" onclick="this.nextElementSibling.classList.toggle('open'); this.textContent = this.nextElementSibling.classList.contains('open') ? 'Hide supporting evidence' : 'Show supporting evidence (${evidenceLines.length})'">Show supporting evidence (${evidenceLines.length})</button>`;
         html += '<div class="evidence-panel">';
@@ -218,11 +217,10 @@
           for (const cit of citationLines) {
             html += `<span>${escHtml(cit)}</span>`;
           }
-          html += '</div>';
+          html += "</div>";
         }
-        html += '</div>';
+        html += "</div>";
       }
-
       finalEl.innerHTML = html;
     }
 
@@ -236,17 +234,22 @@
         const div = document.createElement("div");
         div.className = "step";
         div.innerHTML = `
-          <h3>${step.module}</h3>
-          <strong>prompt</strong>
-          <pre>${JSON.stringify(step.prompt, null, 2)}</pre>
-          <strong>response</strong>
-          <pre>${JSON.stringify(step.response, null, 2)}</pre>
+          <details>
+            <summary>
+              <span class="module-badge">${escHtml(step.module || "module")}</span>
+              <span>Step details</span>
+            </summary>
+            <strong>prompt</strong>
+            <pre class="json">${jsonHighlighted(step.prompt)}</pre>
+            <strong>response</strong>
+            <pre class="json">${jsonHighlighted(step.response)}</pre>
+          </details>
         `;
         stepsEl.appendChild(div);
       }
     }
 
-    runBtn.addEventListener("click", async () => {
+    async function runAgent() {
       const prompt = promptEl.value.trim();
       if (!prompt) {
         statusEl.textContent = "Please enter a prompt.";
@@ -254,7 +257,7 @@
       }
 
       runBtn.disabled = true;
-      statusEl.textContent = "Running...";
+      statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Running...';
       finalEl.innerHTML = '<p class="muted">Working...</p>';
       stepsEl.innerHTML = "";
 
@@ -266,17 +269,26 @@
         });
         const data = await res.json();
         if (data.status === "error") {
-          finalEl.innerHTML = `<div class="answer-section" style="color:#b91c1c">${escHtml(data.error)}</div>`;
+          finalEl.innerHTML = `<div class="status-banner error">⚠ ${escHtml(data.error || "Unknown error")}</div>`;
         } else {
           renderResponse(data.response);
         }
         renderSteps(data.steps || []);
+        finalEl.scrollIntoView({ behavior: "smooth", block: "start" });
         statusEl.textContent = `Done (${data.status})`;
       } catch (err) {
-        finalEl.innerHTML = `<div class="answer-section" style="color:#b91c1c">${escHtml(String(err))}</div>`;
+        finalEl.innerHTML = `<div class="status-banner error">⚠ ${escHtml(String(err))}</div>`;
         statusEl.textContent = "Failed";
       } finally {
         runBtn.disabled = false;
+      }
+    }
+
+    runBtn.addEventListener("click", runAgent);
+    promptEl.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        runAgent();
       }
     });
   </script>
