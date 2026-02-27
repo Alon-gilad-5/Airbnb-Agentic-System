@@ -48,6 +48,15 @@ class MarketAlertStore(Protocol):
     ) -> list[MarketAlertRecord]:
         """Return latest alerts for owner/property scope."""
 
+    def count_since(
+        self,
+        since_utc: str,
+        *,
+        owner_id: str | None = None,
+        property_id: str | None = None,
+    ) -> int:
+        """Count alerts created after *since_utc*."""
+
 
 class SqliteMarketAlertStore:
     """SQLite-backed implementation for local development and testing."""
@@ -165,6 +174,26 @@ class SqliteMarketAlertStore:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [self._from_row(row) for row in rows]
+
+    def count_since(
+        self,
+        since_utc: str,
+        *,
+        owner_id: str | None = None,
+        property_id: str | None = None,
+    ) -> int:
+        where = ["created_at_utc > ?"]
+        params: list[Any] = [since_utc]
+        if owner_id:
+            where.append("owner_id = ?")
+            params.append(owner_id)
+        if property_id:
+            where.append("property_id = ?")
+            params.append(property_id)
+        sql = f"SELECT COUNT(*) FROM market_watch_alerts WHERE {' AND '.join(where)}"
+        with self._connect() as conn:
+            row = conn.execute(sql, params).fetchone()
+        return row[0] if row else 0
 
     def _from_row(self, row: sqlite3.Row) -> MarketAlertRecord:
         """Convert sqlite row to strongly-typed record."""
@@ -360,6 +389,28 @@ class PostgresMarketAlertStore:
                 )
             )
         return out
+
+    def count_since(
+        self,
+        since_utc: str,
+        *,
+        owner_id: str | None = None,
+        property_id: str | None = None,
+    ) -> int:
+        where = ["created_at_utc > %s"]
+        params: list[Any] = [since_utc]
+        if owner_id:
+            where.append("owner_id = %s")
+            params.append(owner_id)
+        if property_id:
+            where.append("property_id = %s")
+            params.append(property_id)
+        sql = f"SELECT COUNT(*) FROM market_watch_alerts WHERE {' AND '.join(where)}"
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                row = cur.fetchone()
+        return row[0] if row else 0
 
     def _to_utc_text(self, value: Any) -> str | None:
         """Normalize date/datetime values into ISO UTC strings."""

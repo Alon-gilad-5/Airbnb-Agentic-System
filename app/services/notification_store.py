@@ -248,6 +248,52 @@ class NotificationStore:
             logger.warning("_update_status(%s) failed: %s", new_status, e)
             return False
 
+    def dismiss_all(self) -> list[str]:
+        """Dismiss all pending notifications. Returns list of dismissed IDs."""
+        if not self._db_url:
+            return []
+        self._ensure_table()
+        try:
+            import psycopg
+
+            with psycopg.connect(self._db_url, prepare_threshold=None, connect_timeout=5) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE mail_notifications
+                        SET status = 'dismissed'
+                        WHERE status = 'pending'
+                        RETURNING id
+                        """
+                    )
+                    ids = [row[0] for row in cur.fetchall()]
+                    conn.commit()
+            for nid in ids:
+                self._broadcast({"type": "dismissed", "notification_id": nid})
+            return ids
+        except Exception as e:
+            logger.warning("dismiss_all failed: %s", e)
+            return []
+
+    def count_pending(self) -> int:
+        """Return the number of pending notifications."""
+        if not self._db_url:
+            return 0
+        self._ensure_table()
+        try:
+            import psycopg
+
+            with psycopg.connect(self._db_url, prepare_threshold=None, connect_timeout=5) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mail_notifications WHERE status = 'pending'"
+                    )
+                    row = cur.fetchone()
+                    return row[0] if row else 0
+        except Exception as e:
+            logger.warning("count_pending failed: %s", e)
+            return 0
+
     # ------------------------------------------------------------------
     # SSE fan-out
     # ------------------------------------------------------------------

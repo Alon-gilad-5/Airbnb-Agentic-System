@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, Header, HTTPException, Query
@@ -1325,6 +1325,31 @@ def dismiss_notification(notification_id: str) -> dict[str, str | bool]:
     if ok:
         return {"status": "ok", "dismissed": True}
     return {"status": "error", "error": "Notification not found or already handled"}
+
+
+@app.post("/api/mail/notifications/dismiss-all")
+def dismiss_all_notifications() -> dict[str, Any]:
+    """Dismiss every pending notification at once."""
+    ids = notification_store.dismiss_all()
+    return {"status": "ok", "dismissed_count": len(ids)}
+
+
+# ---------------------------------------------------------------------------
+# Nav badges
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/nav/badges")
+def nav_badges(market_since: str | None = None) -> dict[str, Any]:
+    """Lightweight counts for navigation badge bubbles."""
+    mail_count = notification_store.count_pending()
+    market_count = 0
+    if market_since:
+        try:
+            market_count = market_alert_store.count_since(market_since)
+        except Exception:
+            pass
+    return {"mail_count": mail_count, "market_count": market_count}
 
 
 # ---------------------------------------------------------------------------

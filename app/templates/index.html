@@ -21,6 +21,23 @@
     .nav a { color:var(--accent2); text-decoration:none; font-weight:600; padding:4px 8px; border-radius:6px; }
     .nav a:hover { background:var(--bg); }
     .nav a.active { background:rgba(31,95,139,0.14); }
+    .nav a { position: relative; }
+    .nav-badge {
+      background: var(--danger);
+      color: #fff;
+      border-radius: 50%;
+      min-width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0 4px;
+      margin-left: 4px;
+      vertical-align: top;
+    }
+    .nav-badge:empty { display: none; }
     button { background:linear-gradient(90deg,var(--accent),var(--accent2)); color:#fff; border:0; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
     button:disabled { opacity:0.5; cursor:default; }
     select {
@@ -150,8 +167,8 @@
     <section class="card">
       <div class="nav">
         <a href="/" class="active" aria-current="page">Reviews Console</a>
-        <a href="/mail">Mail Console</a>
-        <a href="/market-watch">Market Watch</a>
+        <a href="/mail">Mail Console<span class="nav-badge" id="navMailBadge"></span></a>
+        <a href="/market-watch">Market Watch<span class="nav-badge" id="navMarketBadge"></span></a>
       </div>
       <h1>Reviews Agent Console</h1>
       <p>Enter a business question, run the agent, and inspect response + full steps trace.</p>
@@ -450,6 +467,26 @@
       }
     });
     loadPropertyProfiles();
+
+    // Nav badges
+    (function() {
+      const navMailBadge = document.getElementById("navMailBadge");
+      const navMarketBadge = document.getElementById("navMarketBadge");
+      function updateNavBadges() {
+        let since = "";
+        try { since = localStorage.getItem("market_watch_last_seen") || ""; } catch {}
+        const qs = since ? `?market_since=${encodeURIComponent(since)}` : "";
+        fetch(`/api/nav/badges${qs}`)
+          .then(r => r.json())
+          .then(d => {
+            navMailBadge.textContent = d.mail_count > 0 ? d.mail_count : "";
+            navMarketBadge.textContent = d.market_count > 0 ? d.market_count : "";
+          })
+          .catch(() => {});
+      }
+      updateNavBadges();
+      setInterval(updateNavBadges, 30000);
+    })();
   </script>
 </body>
 </html>

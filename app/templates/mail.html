@@ -21,6 +21,23 @@
     .nav a { color:var(--accent2); text-decoration:none; font-weight:600; padding:4px 8px; border-radius:6px; }
     .nav a:hover { background:var(--bg); }
     .nav a.active { background:rgba(31,95,139,0.14); }
+    .nav a { position: relative; }
+    .nav-badge {
+      background: var(--danger);
+      color: #fff;
+      border-radius: 50%;
+      min-width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0 4px;
+      margin-left: 4px;
+      vertical-align: top;
+    }
+    .nav-badge:empty { display: none; }
     button { background:linear-gradient(90deg,var(--accent),var(--accent2)); color:#fff; border:0; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
     button:disabled { opacity:0.5; cursor:default; }
     button.secondary { background:var(--bg); color:var(--ink); border:1px solid var(--border); }
@@ -270,7 +287,7 @@
       <div class="nav">
         <a href="/">Reviews Console</a>
         <a href="/mail" class="active" aria-current="page">Mail Console</a>
-        <a href="/market-watch">Market Watch</a>
+        <a href="/market-watch">Market Watch<span class="nav-badge" id="navMarketBadge"></span></a>
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
         <h1>Mail Agent Console</h1>
@@ -289,7 +306,10 @@
     </section>
 
     <section class="card">
-      <h2>Notifications</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Notifications</h2>
+        <button class="secondary" id="dismissAllBtn" style="display:none; font-size:0.85rem; padding:6px 14px;" title="Dismiss all notifications">Dismiss all</button>
+      </div>
       <div id="notifList" class="notif-list">
         <div class="empty-state" id="emptyState">
           <div class="icon">&#9993;</div>
@@ -334,6 +354,8 @@
     const autoSendGoodReviewsCheckbox = document.getElementById("autoSendGoodReviews");
     const toast = document.getElementById("toast");
 
+    const dismissAllBtn = document.getElementById("dismissAllBtn");
+    const navMarketBadge = document.getElementById("navMarketBadge");
     const notifications = {};
     const emailActionCache = {};
     const sendConfirmTimers = {};
@@ -409,6 +431,7 @@
       const count = Object.keys(notifications).length;
       notifCountEl.textContent = count;
       notifCountEl.style.display = count > 0 ? "inline-flex" : "none";
+      dismissAllBtn.style.display = count > 0 ? "inline-block" : "none";
       document.title = count > 0 ? `(${count}) Mail Agent Console` : "Mail Agent Console";
       emptyState.style.display = count > 0 ? "none" : "block";
       if (count === 0) {
@@ -1055,9 +1078,50 @@
     // Init
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // Dismiss all
+    // ------------------------------------------------------------------
+
+    dismissAllBtn.addEventListener("click", async () => {
+      dismissAllBtn.disabled = true;
+      try {
+        await fetch("/api/mail/notifications/dismiss-all", { method: "POST" });
+        for (const card of Array.from(notifList.querySelectorAll(".notif-card"))) {
+          card.classList.add("removing");
+        }
+        setTimeout(() => {
+          for (const id of Object.keys(notifications)) delete notifications[id];
+          notifList.querySelectorAll(".notif-card").forEach(c => c.remove());
+          updateNotifCount();
+        }, 400);
+      } catch (e) {
+        showToast("Failed to dismiss all.", "error");
+      } finally {
+        dismissAllBtn.disabled = false;
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // Nav badges (market watch)
+    // ------------------------------------------------------------------
+
+    function updateNavBadges() {
+      let since = "";
+      try { since = localStorage.getItem("market_watch_last_seen") || ""; } catch {}
+      const qs = since ? `?market_since=${encodeURIComponent(since)}` : "";
+      fetch(`/api/nav/badges${qs}`)
+        .then(r => r.json())
+        .then(d => {
+          navMarketBadge.textContent = d.market_count > 0 ? d.market_count : "";
+        })
+        .catch(() => {});
+    }
+
     loadNotifications();
     loadMailSettings();
     connectSSE();
+    updateNavBadges();
+    setInterval(updateNavBadges, 30000);
   </script>
 </body>
 </html>
