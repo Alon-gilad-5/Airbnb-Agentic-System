@@ -103,8 +103,27 @@
       padding: 6px 0;
       border-bottom: 1px dashed var(--border);
       line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
     }
+    .evidence-item .ev-text { flex: 1; }
     .evidence-item:last-child { border-bottom: none; }
+    .flag-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      opacity: 0.5;
+      transition: opacity 0.15s;
+      flex-shrink: 0;
+    }
+    .flag-btn:hover { opacity: 1; color: var(--warn); }
+    .evidence-item.flagged .ev-text { opacity: 0.4; text-decoration: line-through; }
+    .evidence-item.flagged .flag-btn { color: var(--warn); opacity: 1; cursor: default; }
     .citations-list {
       margin-top: 8px;
       font-size: 0.82rem;
@@ -358,7 +377,13 @@
         html += `<button class="evidence-toggle" onclick="this.nextElementSibling.classList.toggle('open'); this.textContent = this.nextElementSibling.classList.contains('open') ? 'Hide supporting evidence' : 'Show supporting evidence (${evidenceLines.length})'">Show supporting evidence (${evidenceLines.length})</button>`;
         html += '<div class="evidence-panel">';
         for (const line of evidenceLines) {
-          html += `<div class="evidence-item">${escHtml(line)}</div>`;
+          const vidMatch = line.match(/^\[vid:([^\]]+)\]\s*/);
+          const vid = vidMatch ? vidMatch[1] : '';
+          const displayText = vidMatch ? line.slice(vidMatch[0].length) : line;
+          html += `<div class="evidence-item"${vid ? ` data-vid="${escHtml(vid)}"` : ''}>` +
+            `<span class="ev-text">${escHtml(displayText)}</span>` +
+            (vid ? '<button class="flag-btn" title="Flag as irrelevant" onclick="flagEvidence(this)">&#9873;</button>' : '') +
+            '</div>';
         }
         if (citationLines.length) {
           html += '<div class="citations-list"><strong>Sources:</strong>';
@@ -370,6 +395,24 @@
         html += "</div>";
       }
       finalEl.innerHTML = html;
+    }
+
+    async function flagEvidence(btn) {
+      const item = btn.closest('.evidence-item');
+      const vid = item.dataset.vid;
+      if (!vid || item.classList.contains('flagged')) return;
+      const queryText = promptEl.value.trim();
+      item.classList.add('flagged');
+      btn.disabled = true;
+      try {
+        await fetch('/api/evidence/flag', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ vector_id: vid, query_text: queryText }),
+        });
+      } catch (err) {
+        console.warn('Flag failed:', err);
+      }
     }
 
     function renderSteps(steps) {

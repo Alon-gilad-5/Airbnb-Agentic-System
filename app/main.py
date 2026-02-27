@@ -31,6 +31,7 @@ from app.schemas import (
     AgentInfoResponse,
     AgentPromptExample,
     AgentPromptTemplate,
+    EvidenceFlagRequest,
     ExecuteRequest,
     ExecuteResponse,
     MailActionRequest,
@@ -72,6 +73,7 @@ from app.services.mail_push_state import (
     set_owner_choice,
     set_push_state,
 )
+from app.services.evidence_flag_store import EvidenceFlagStore
 from app.services.notification_store import NotificationStore
 from app.services.region_utils import canonicalize_region
 from app.services.web_review_ingest import WebReviewIngestService
@@ -311,6 +313,7 @@ mail_agents_by_provider: dict[str, MailAgent] = {
 }
 mail_agent = mail_agents_by_provider[default_chat_provider]
 notification_store = NotificationStore(database_url=settings.database_url)
+evidence_flag_store = EvidenceFlagStore(database_url=settings.database_url)
 
 # Serialize push webhook processing — the Gmail API client (httplib2) is not
 # thread-safe, so concurrent threadpool workers would corrupt SSL state.
@@ -1332,6 +1335,22 @@ def dismiss_all_notifications() -> dict[str, Any]:
     """Dismiss every pending notification at once."""
     ids = notification_store.dismiss_all()
     return {"status": "ok", "dismissed_count": len(ids)}
+
+
+# ---------------------------------------------------------------------------
+# Evidence flags
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/evidence/flag")
+def flag_evidence(payload: EvidenceFlagRequest) -> dict[str, bool]:
+    """Flag a piece of evidence as irrelevant (saved for future retrieval tuning)."""
+    ok = evidence_flag_store.add_flag(
+        vector_id=payload.vector_id,
+        query_text=payload.query_text,
+        flag=payload.flag,
+    )
+    return {"ok": ok}
 
 
 # ---------------------------------------------------------------------------

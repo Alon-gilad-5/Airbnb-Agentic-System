@@ -358,3 +358,11 @@ class MailSettingsUpdateRequest(BaseModel):
     """Request body for POST /api/mail/settings."""
 
     auto_send_good_reviews: bool = Field(description="If True, agent sends replies for good reviews (rating > 3) without owner approval.")
+
+
+class EvidenceFlagRequest(BaseModel):
+    """Request body for POST /api/evidence/flag."""
+
+    vector_id: str = Field(description="Pinecone vector ID of the flagged evidence item.")
+    query_text: str = Field(description="The user query that surfaced this evidence.")
+    flag: str = Field(default="irrelevant", description="Flag type (default: irrelevant).")

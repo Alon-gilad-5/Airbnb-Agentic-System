@@ -142,7 +142,7 @@ def _build_evidence_snippets(evidence: list[RetrievedReview], max_reviews: int) 
         date = md.get("review_date", "unknown")
         reviewer = md.get("reviewer_name", "Guest")
         score = f"{match.score:.2f}"
-        snippets.append(f"[{score}] \"{short}\" — {reviewer}, {date}")
+        snippets.append(f"[vid:{match.vector_id}] [{score}] \"{short}\" — {reviewer}, {date}")
     return snippets
 
 
