@@ -11,6 +11,7 @@ from app.services.market_alert_store import MarketAlertRecord
 class _DummyMarketAlertStore:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.count_since_calls: list[dict[str, object]] = []
 
     def list_latest_alerts(
         self,
@@ -27,6 +28,22 @@ class _DummyMarketAlertStore:
             }
         )
         return []
+
+    def count_since(
+        self,
+        since_utc: str,
+        *,
+        owner_id: str | None = None,
+        property_id: str | None = None,
+    ) -> int:
+        self.count_since_calls.append(
+            {
+                "since_utc": since_utc,
+                "owner_id": owner_id,
+                "property_id": property_id,
+            }
+        )
+        return 11
 
 
 class _DummyMarketWatchAgent:
@@ -137,3 +154,28 @@ def test_market_watch_alerts_respects_optional_scope_overrides(monkeypatch) -> N
     assert dummy_store.calls[0]["property_id"] == "property-override"
     assert dummy_store.calls[1]["owner_id"] == "owner-1"
     assert dummy_store.calls[1]["property_id"] == "property-1"
+
+
+def test_nav_badges_passes_property_scope_to_market_count(monkeypatch) -> None:
+    dummy_store = _DummyMarketAlertStore()
+
+    monkeypatch.setattr(
+        main_module,
+        "notification_store",
+        SimpleNamespace(count_pending=lambda: 4),
+    )
+    monkeypatch.setattr(main_module, "market_alert_store", dummy_store)
+
+    response = main_module.nav_badges(
+        market_since="2026-02-26T00:00:00Z",
+        property_id=" 10046908 ",
+    )
+
+    assert response == {"mail_count": 4, "market_count": 11}
+    assert dummy_store.count_since_calls == [
+        {
+            "since_utc": "2026-02-26T00:00:00Z",
+            "owner_id": None,
+            "property_id": "10046908",
+        }
+    ]

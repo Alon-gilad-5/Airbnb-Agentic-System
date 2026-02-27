@@ -1359,13 +1359,20 @@ def flag_evidence(payload: EvidenceFlagRequest) -> dict[str, bool]:
 
 
 @app.get("/api/nav/badges")
-def nav_badges(market_since: str | None = None) -> dict[str, Any]:
+def nav_badges(
+    market_since: str | None = None,
+    property_id: str | None = None,
+) -> dict[str, Any]:
     """Lightweight counts for navigation badge bubbles."""
     mail_count = notification_store.count_pending()
     market_count = 0
+    property_filter = property_id.strip() if property_id and property_id.strip() else None
     if market_since:
         try:
-            market_count = market_alert_store.count_since(market_since)
+            market_count = market_alert_store.count_since(
+                market_since,
+                property_id=property_filter,
+            )
         except Exception:
             pass
     return {"mail_count": mail_count, "market_count": market_count}

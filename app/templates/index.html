@@ -232,6 +232,8 @@
     const statusEl = document.getElementById("status");
     const finalEl = document.getElementById("finalResponse");
     const stepsEl = document.getElementById("steps");
+    const navMailBadge = document.getElementById("navMailBadge");
+    const navMarketBadge = document.getElementById("navMarketBadge");
     const LLM_PROVIDER_STORAGE_KEY = "reviews_console_llm_provider";
     const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
     const allowedProviders = new Set(["default", "llmod", "openrouter"]);
@@ -250,6 +252,7 @@
     function setSelectedPropertyProfile(profileId) {
       if (!profileId || !propertyProfilesById.has(profileId)) {
         selectedPropertyProfile = null;
+        updateNavBadges();
         return;
       }
       selectedPropertyProfile = propertyProfilesById.get(profileId) || null;
@@ -259,6 +262,7 @@
       } catch (err) {
         // Ignore storage errors in restricted browser contexts.
       }
+      updateNavBadges();
     }
 
     async function loadPropertyProfiles() {
@@ -329,6 +333,34 @@
       const d = document.createElement("div");
       d.textContent = s || "";
       return d.innerHTML;
+    }
+
+    function updateNavBadges() {
+      const params = new URLSearchParams();
+      try {
+        const since = localStorage.getItem("market_watch_last_seen") || "";
+        if (since) {
+          params.set("market_since", since);
+        }
+      } catch (err) {
+        // Ignore storage errors in restricted browser contexts.
+      }
+      const propertyId = (
+        selectedPropertyProfile && typeof selectedPropertyProfile.property_id === "string"
+          ? selectedPropertyProfile.property_id.trim()
+          : ""
+      );
+      if (propertyId) {
+        params.set("property_id", propertyId);
+      }
+      const qs = params.toString();
+      fetch(`/api/nav/badges${qs ? `?${qs}` : ""}`)
+        .then(r => r.json())
+        .then(d => {
+          navMailBadge.textContent = d.mail_count > 0 ? d.mail_count : "";
+          navMarketBadge.textContent = d.market_count > 0 ? d.market_count : "";
+        })
+        .catch(() => {});
     }
 
     function jsonHighlighted(obj) {
@@ -512,24 +544,8 @@
     loadPropertyProfiles();
 
     // Nav badges
-    (function() {
-      const navMailBadge = document.getElementById("navMailBadge");
-      const navMarketBadge = document.getElementById("navMarketBadge");
-      function updateNavBadges() {
-        let since = "";
-        try { since = localStorage.getItem("market_watch_last_seen") || ""; } catch {}
-        const qs = since ? `?market_since=${encodeURIComponent(since)}` : "";
-        fetch(`/api/nav/badges${qs}`)
-          .then(r => r.json())
-          .then(d => {
-            navMailBadge.textContent = d.mail_count > 0 ? d.mail_count : "";
-            navMarketBadge.textContent = d.market_count > 0 ? d.market_count : "";
-          })
-          .catch(() => {});
-      }
-      updateNavBadges();
-      setInterval(updateNavBadges, 30000);
-    })();
+    updateNavBadges();
+    setInterval(updateNavBadges, 30000);
   </script>
 </body>
 </html>
