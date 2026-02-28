@@ -107,6 +107,8 @@ def test_property_profiles_endpoint_returns_primary_and_secondary(monkeypatch) -
     assert response.default_profile_id == "primary"
     assert [p.profile_id for p in response.profiles] == ["primary", "secondary"]
     assert response.profiles[1].region == "los angeles"
+    assert response.profiles[0].review_volume_label == "Many reviews"
+    assert response.profiles[1].review_volume_label == "few reviews"
 
 
 def test_market_watch_run_uses_payload_override_context(monkeypatch) -> None:

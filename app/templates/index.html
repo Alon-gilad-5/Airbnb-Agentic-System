@@ -288,7 +288,10 @@
           opt.value = profile.profile_id;
           const propertyName = (profile.property_name || "").trim();
           const propertyId = (profile.property_id || "").trim();
-          if (propertyName && propertyId) {
+          const reviewVolumeLabel = (profile.review_volume_label || "").trim();
+          if (propertyName && reviewVolumeLabel) {
+            opt.textContent = `${propertyName} (${reviewVolumeLabel})`;
+          } else if (propertyName && propertyId) {
             opt.textContent = `${propertyName} (${propertyId})`;
           } else if (propertyName) {
             opt.textContent = propertyName;
@@ -335,7 +338,7 @@
       return d.innerHTML;
     }
 
-    function updateNavBadges() {
+    function fetchNavBadges() {
       const params = new URLSearchParams();
       try {
         const since = localStorage.getItem("market_watch_last_seen") || "";
@@ -354,13 +357,17 @@
         params.set("property_id", propertyId);
       }
       const qs = params.toString();
-      fetch(`/api/nav/badges${qs ? `?${qs}` : ""}`)
+      fetch(`/api/nav/badges${qs ? `?${qs}` : ""}`, { cache: "no-store" })
         .then(r => r.json())
         .then(d => {
           navMailBadge.textContent = d.mail_count > 0 ? d.mail_count : "";
           navMarketBadge.textContent = d.market_count > 0 ? d.market_count : "";
         })
         .catch(() => {});
+    }
+
+    function updateNavBadges() {
+      fetchNavBadges();
     }
 
     function jsonHighlighted(obj) {

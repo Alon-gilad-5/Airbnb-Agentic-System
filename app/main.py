@@ -96,6 +96,10 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 THRESHOLD_LABEL_POOL_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_label_pool.jsonl"
 THRESHOLD_GOLD_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_gold.csv"
 VALID_CHAT_PROVIDERS = {"llmod", "openrouter"}
+PROPERTY_REVIEW_VOLUME_LABELS = {
+    "42409434": "Many reviews",
+    "10046908": "few reviews",
+}
 
 
 def _build_openrouter_headers() -> dict[str, str] | None:
@@ -148,6 +152,7 @@ def _owner_to_profile_response(
         longitude=owner.longitude,
         source_urls=_owner_source_urls(owner),
         max_scrape_reviews=owner.default_max_scrape_reviews,
+        review_volume_label=PROPERTY_REVIEW_VOLUME_LABELS.get((owner.property_id or "").strip()),
     )
 
 

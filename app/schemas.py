@@ -119,6 +119,7 @@ class PropertyProfileResponse(BaseModel):
     longitude: float | None
     source_urls: dict[str, str] | None
     max_scrape_reviews: int | None
+    review_volume_label: str | None = None
 
 
 class PropertyProfilesResponse(BaseModel):

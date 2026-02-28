@@ -1165,7 +1165,7 @@
         params.set("property_id", propertyId);
       }
       const qs = params.toString();
-      fetch(`/api/nav/badges${qs ? `?${qs}` : ""}`)
+      fetch(`/api/nav/badges${qs ? `?${qs}` : ""}`, { cache: "no-store" })
         .then(r => r.json())
         .then(d => {
           navMarketBadge.textContent = d.market_count > 0 ? d.market_count : "";
