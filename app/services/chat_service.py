@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httpx
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -23,12 +24,17 @@ class ChatService:
         self._model = model
         self._max_output_tokens = max(1, int(max_output_tokens))
         self._llm: ChatOpenAI | None = None
+        self._http_client: httpx.Client | None = None
         if api_key and base_url:
+            # Ignore process-wide proxy env vars so local dev shells with
+            # placeholder proxy settings do not break outbound model calls.
+            self._http_client = httpx.Client(trust_env=False)
             self._llm = ChatOpenAI(
                 api_key=api_key,
                 base_url=base_url,
                 model=model,
                 default_headers=default_headers,
+                http_client=self._http_client,
                 max_tokens=self._max_output_tokens,
                 temperature=1 if "gpt-5" in model.lower() else 0.2,
                 max_retries=0,

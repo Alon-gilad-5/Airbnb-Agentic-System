@@ -45,7 +45,19 @@ class RouterAgent:
         "clean", "cleanliness", "check-in", "service", "noise",
         "host", "feedback", "rating",
         "neighbor", "neighbours", "neighbors", "neighbour",
-        "compare", "comparison", "competitor",
+        "comparison",
+    }
+    _analyst_keywords = {
+        "benchmark",
+        "competitive analysis",
+        "analyze my scores",
+        "analyse my scores",
+        "analyze my property specs",
+        "analyse my property specs",
+        "compare my property specs",
+        "compare my review scores",
+        "how do i compare to neighbors",
+        "how do i benchmark",
     }
     _market_watch_keywords = {
         "market", "intel", "weather", "forecast", "storm", "snow",
@@ -69,6 +81,11 @@ class RouterAgent:
             decision = RouteDecision(
                 agent_name="market_watch_agent",
                 reason="Matched market/weather/event intent keywords.",
+            )
+        elif any(keyword in lowered for keyword in self._analyst_keywords):
+            decision = RouteDecision(
+                agent_name="analyst_agent",
+                reason="Matched analyst/benchmark intent keywords.",
             )
         elif any(keyword in lowered for keyword in self._reviews_keywords):
             decision = RouteDecision(

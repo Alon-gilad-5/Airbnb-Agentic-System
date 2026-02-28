@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from app.agents.base import Agent
+from app.agents.analyst_agent import AnalystAgent
 from app.agents.mail_agent import MailAgent, MailAgentConfig
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
@@ -28,9 +29,13 @@ from app.architecture import ensure_architecture_png
 from app.config import ActiveOwnerContext, load_settings
 from app.schemas import (
     ActiveOwnerContextResponse,
+    AnalysisRequest,
+    AnalysisResponse,
     AgentInfoResponse,
     AgentPromptExample,
     AgentPromptTemplate,
+    AnalysisCategoricalItem,
+    AnalysisNumericItem,
     EvidenceFlagRequest,
     ExecuteRequest,
     ExecuteResponse,
@@ -58,6 +63,7 @@ from app.schemas import (
     TeamStudentResponse,
 )
 from app.services.market_alert_store import MarketAlertRecord, create_market_alert_store
+from app.services.listing_store import create_listing_store
 from app.services.neighbor_store import create_neighbor_store
 from app.services.market_data_providers import MarketDataProviders
 from app.services.market_watch_scheduler import MarketWatchScheduler
@@ -263,6 +269,7 @@ market_watch_agent = MarketWatchAgent(
 )
 
 neighbor_store = create_neighbor_store(database_url=settings.database_url)
+listing_store = create_listing_store(database_url=settings.database_url)
 
 gmail_service = GmailService(
     enabled=settings.mail_enabled,
@@ -308,6 +315,16 @@ def _build_mail_agent(provider_chat_service: ChatService) -> MailAgent:
     )
 
 
+def _build_analyst_agent(provider_chat_service: ChatService) -> AnalystAgent:
+    """Construct an analyst agent bound to one configured chat provider."""
+
+    return AnalystAgent(
+        listing_store=listing_store,
+        neighbor_store=neighbor_store,
+        chat_service=provider_chat_service,
+    )
+
+
 reviews_agents_by_provider: dict[str, ReviewsAgent] = {
     provider_name: _build_reviews_agent(provider_chat_service)
     for provider_name, provider_chat_service in chat_services_by_provider.items()
@@ -316,7 +333,12 @@ mail_agents_by_provider: dict[str, MailAgent] = {
     provider_name: _build_mail_agent(provider_chat_service)
     for provider_name, provider_chat_service in chat_services_by_provider.items()
 }
+analysis_agents_by_provider: dict[str, AnalystAgent] = {
+    provider_name: _build_analyst_agent(provider_chat_service)
+    for provider_name, provider_chat_service in chat_services_by_provider.items()
+}
 mail_agent = mail_agents_by_provider[default_chat_provider]
+analyst_agent = analysis_agents_by_provider[default_chat_provider]
 notification_store = NotificationStore(database_url=settings.database_url)
 evidence_flag_store = EvidenceFlagStore(database_url=settings.database_url)
 
@@ -333,6 +355,7 @@ agent_registry: dict[str, Agent] = {
     "reviews_agent": reviews_agents_by_provider[default_chat_provider],
     "market_watch_agent": market_watch_agent,
     "mail_agent": mail_agent,
+    "analyst_agent": analyst_agent,
 }
 
 
@@ -768,6 +791,13 @@ def web_ui(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/analysis", response_class=HTMLResponse)
+def analysis_ui(request: Request) -> HTMLResponse:
+    """Analysis console for structured benchmarking against neighbors."""
+
+    return templates.TemplateResponse("analysis.html", {"request": request})
+
+
 @app.get("/labeling", response_class=HTMLResponse)
 def labeling_ui(request: Request) -> HTMLResponse:
     """UI for manual relevance-label selection during threshold calibration."""
@@ -931,11 +961,12 @@ def agent_info() -> AgentInfoResponse:
     return AgentInfoResponse(
         description=(
             "Multi-agent-ready hospitality insights API. "
-            "Enabled domain agents: reviews_agent, market_watch_agent, and mail_agent."
+            "Enabled domain agents: reviews_agent, market_watch_agent, mail_agent, and analyst_agent."
         ),
         purpose=(
             "Answer business questions from guest reviews, provide proactive market intelligence "
-            "from weather/events/holiday signals, and manage Airbnb email workflows."
+            "from weather/events/holiday signals, manage Airbnb email workflows, "
+            "and benchmark one property against its neighbors using structured listing data."
         ),
         prompt_template=AgentPromptTemplate(
             template=(
@@ -952,6 +983,41 @@ def agent_info() -> AgentInfoResponse:
                     "in specific rooms. Confidence: medium."
                 ),
                 steps=example_steps,
+            ),
+            AgentPromptExample(
+                prompt="Compare my review scores against nearby competitors.",
+                full_response=(
+                    "Your property is above the neighbor average on cleanliness and communication, "
+                    "roughly in line on overall rating, and weaker on value. The clearest opportunity "
+                    "is improving perceived value without sacrificing your strongest service signals."
+                ),
+                steps=[
+                    StepLog(
+                        module="router_agent",
+                        prompt={"user_prompt": "Compare my review scores against nearby competitors."},
+                        response={"selected_agent": "analyst_agent", "reason": "Matched analyst/benchmark intent keywords."},
+                    ),
+                    StepLog(
+                        module="analyst_agent.neighbor_lookup",
+                        prompt={"property_id": "42409434"},
+                        response={"neighbor_count": 20, "neighbor_ids": ["2722835", "14559400"]},
+                    ),
+                    StepLog(
+                        module="analyst_agent.data_fetch",
+                        prompt={"category": "review_scores", "property_id": "42409434"},
+                        response={"rows_returned": 18, "owner_found": True, "neighbor_rows_found": 17},
+                    ),
+                    StepLog(
+                        module="analyst_agent.comparison_compute",
+                        prompt={"category": "review_scores"},
+                        response={"numeric_items": 7, "categorical_items": 0, "neighbor_rows_used": 17},
+                    ),
+                    StepLog(
+                        module="analyst_agent.answer_generation",
+                        prompt={"model": settings.chat_model, "system_prompt": "...", "user_prompt": "..."},
+                        response={"text": "Your property is above the neighbor average on cleanliness and communication..."},
+                    ),
+                ],
             )
         ],
     )
@@ -1039,6 +1105,42 @@ def market_watch_run(
         )
 
 
+@app.post("/api/analysis", response_model=AnalysisResponse)
+def run_analysis(payload: AnalysisRequest) -> AnalysisResponse:
+    """Run structured neighbor benchmarking analysis for one property."""
+
+    property_id = (
+        payload.property_id.strip()
+        if payload.property_id and payload.property_id.strip()
+        else settings.active_owner.property_id
+    )
+    context: dict[str, object] = {
+        "property_id": property_id,
+        "analysis_category": payload.category,
+    }
+    prompt = f"Analyze my {payload.category} against neighbors."
+
+    try:
+        outcome = analyst_agent.analyze(prompt, context=context)
+        return AnalysisResponse(
+            status=("error" if outcome.error else "ok"),
+            error=outcome.error,
+            response=(None if outcome.error else outcome.narrative),
+            numeric_comparison=outcome.numeric_comparison,
+            categorical_comparison=outcome.categorical_comparison,
+            steps=outcome.steps,
+        )
+    except Exception as exc:
+        return AnalysisResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            response=None,
+            numeric_comparison=[],
+            categorical_comparison=[],
+            steps=[],
+        )
+
+
 @app.post("/api/execute", response_model=ExecuteResponse)
 def execute(payload: ExecuteRequest) -> ExecuteResponse:
     """Required endpoint: route request, run selected agent, return full trace."""
@@ -1100,6 +1202,21 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
             target_agent = mail_agents_by_provider.get(resolved_provider)
             if target_agent is None:
                 target_agent = mail_agents_by_provider.get(default_chat_provider)
+        elif decision.agent_name == "analyst_agent":
+            provider_chat_service = chat_services_by_provider.get(resolved_provider)
+            if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+                return ExecuteResponse(
+                    status="error",
+                    error=(
+                        f"Requested llm_provider '{resolved_provider}' is not configured. "
+                        f"Set required provider env vars and retry."
+                    ),
+                    response=None,
+                    steps=steps,
+                )
+            target_agent = analysis_agents_by_provider.get(resolved_provider)
+            if target_agent is None:
+                target_agent = analysis_agents_by_provider.get(default_chat_provider)
         else:
             # market_watch is deterministic and does not use chat provider override.
             target_agent = agent_registry.get(decision.agent_name)

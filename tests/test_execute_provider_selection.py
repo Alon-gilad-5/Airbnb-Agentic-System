@@ -62,11 +62,20 @@ def _patch_provider_state(monkeypatch, *, openrouter_available: bool = True) -> 
     )
     monkeypatch.setattr(
         main_module,
+        "analysis_agents_by_provider",
+        {
+            "llmod": _DummyAgent("analysis:llmod"),
+            "openrouter": _DummyAgent("analysis:openrouter"),
+        },
+    )
+    monkeypatch.setattr(
+        main_module,
         "agent_registry",
         {
             "reviews_agent": _DummyAgent("reviews:default"),
             "market_watch_agent": _DummyAgent("market_watch:deterministic"),
             "mail_agent": _DummyAgent("mail:default"),
+            "analyst_agent": _DummyAgent("analysis:default"),
         },
     )
     monkeypatch.setattr(main_module.settings, "market_watch_enabled", True)
@@ -118,3 +127,15 @@ def test_execute_market_watch_ignores_provider_override(monkeypatch) -> None:
 
     assert result.status == "ok"
     assert result.response == "market_watch:deterministic"
+
+
+def test_execute_uses_openrouter_when_analyst_override_is_explicit(monkeypatch) -> None:
+    _patch_provider_state(monkeypatch, openrouter_available=True)
+    _patch_router(monkeypatch, agent_name="analyst_agent")
+
+    result = main_module.execute(
+        ExecuteRequest(prompt="benchmark my scores", llm_provider="openrouter")
+    )
+
+    assert result.status == "ok"
+    assert result.response == "analysis:openrouter"

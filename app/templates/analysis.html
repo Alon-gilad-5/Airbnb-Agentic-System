@@ -1,0 +1,340 @@
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analysis Console</title>
+  <link rel="stylesheet" href="/static/base.css">
+  <style>
+    .toggle-group { display:flex; gap:10px; flex-wrap:wrap; }
+    .toggle-btn {
+      background:#eef4f7;
+      color:var(--ink);
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:8px 14px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    .toggle-btn.active {
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      color:#fff;
+      border-color:transparent;
+    }
+    .comparison-table {
+      width:100%;
+      border-collapse:collapse;
+      font-size:0.95rem;
+    }
+    .comparison-table th,
+    .comparison-table td {
+      border-bottom:1px solid var(--border);
+      padding:10px 12px;
+      text-align:left;
+      vertical-align:top;
+    }
+    .comparison-table th {
+      color:var(--muted);
+      font-size:0.82rem;
+      text-transform:uppercase;
+      letter-spacing:0.04em;
+    }
+    .category-grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+    .category-card {
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:14px;
+      background:#fbfdff;
+    }
+    .category-card h3 { margin:0 0 8px; font-size:1rem; }
+    .bucket-list { display:grid; gap:6px; }
+    .bucket-row { display:flex; justify-content:space-between; gap:10px; color:var(--muted); }
+    .narrative {
+      white-space:pre-wrap;
+      line-height:1.6;
+    }
+    .empty-note { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <section class="card">
+      <div class="nav">
+        <a href="/">Reviews Console</a>
+        <a href="/mail">Mail Console</a>
+        <a href="/market-watch">Market Watch</a>
+        <a href="/analysis" class="active" aria-current="page">Analysis</a>
+      </div>
+      <h1>Analysis Console</h1>
+      <p>Benchmark your property against nearby neighbors using structured listing data.</p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <label for="propertyProfile" class="muted">Property</label>
+        <select id="propertyProfile" aria-label="Property profile">
+          <option value="primary">Primary</option>
+        </select>
+        <div class="toggle-group" aria-label="Analysis category">
+          <button type="button" class="toggle-btn active" data-category="review_scores">Review Scores</button>
+          <button type="button" class="toggle-btn" data-category="property_specs">Property Specs + Host</button>
+        </div>
+        <button id="runBtn">Run Analysis</button>
+        <span id="status" class="muted">Idle</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Narrative</h2>
+      <div id="narrative" class="narrative empty-note">No run yet.</div>
+    </section>
+
+    <section class="card">
+      <h2>Numeric Comparison</h2>
+      <div id="numericWrap" class="empty-note">No run yet.</div>
+    </section>
+
+    <section class="card">
+      <h2>Categorical Comparison</h2>
+      <div id="categoricalWrap" class="empty-note">No run yet.</div>
+    </section>
+
+    <section class="card">
+      <h2>Steps</h2>
+      <div id="steps" class="steps"></div>
+    </section>
+  </main>
+
+  <script>
+    const propertyProfileEl = document.getElementById("propertyProfile");
+    const runBtn = document.getElementById("runBtn");
+    const statusEl = document.getElementById("status");
+    const narrativeEl = document.getElementById("narrative");
+    const numericWrapEl = document.getElementById("numericWrap");
+    const categoricalWrapEl = document.getElementById("categoricalWrap");
+    const stepsEl = document.getElementById("steps");
+    const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
+    const categoryButtons = Array.from(document.querySelectorAll(".toggle-btn"));
+    let propertyProfilesById = new Map();
+    let selectedPropertyProfile = null;
+    let selectedCategory = "review_scores";
+
+    function escHtml(str) {
+      const d = document.createElement("div");
+      d.textContent = str || "";
+      return d.innerHTML;
+    }
+
+    function jsonHighlighted(obj) {
+      const json = JSON.stringify(obj ?? {}, null, 2);
+      return escHtml(json).replace(
+        /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,
+        (match) => {
+          let cls = "n";
+          if (/^"/.test(match)) cls = /:$/.test(match) ? "k" : "s";
+          else if (/true|false/.test(match)) cls = "b";
+          else if (/null/.test(match)) cls = "nl";
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+    }
+
+    function setSelectedPropertyProfile(profileId) {
+      if (!profileId || !propertyProfilesById.has(profileId)) {
+        selectedPropertyProfile = null;
+        return;
+      }
+      selectedPropertyProfile = propertyProfilesById.get(profileId) || null;
+      propertyProfileEl.value = profileId;
+      try {
+        localStorage.setItem(PROPERTY_PROFILE_STORAGE_KEY, profileId);
+      } catch (err) {
+        // Ignore storage errors.
+      }
+    }
+
+    async function loadPropertyProfiles() {
+      propertyProfileEl.innerHTML = '<option value="primary">Primary</option>';
+      propertyProfilesById = new Map();
+      selectedPropertyProfile = null;
+
+      try {
+        const res = await fetch("/api/property_profiles");
+        const data = await res.json();
+        const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+        if (!profiles.length) {
+          return;
+        }
+
+        propertyProfileEl.innerHTML = "";
+        for (const profile of profiles) {
+          if (!profile || typeof profile.profile_id !== "string") continue;
+          propertyProfilesById.set(profile.profile_id, profile);
+          const opt = document.createElement("option");
+          opt.value = profile.profile_id;
+          opt.textContent = profile.property_name || profile.property_id || profile.profile_id;
+          propertyProfileEl.appendChild(opt);
+        }
+
+        const defaultProfileId = (
+          typeof data.default_profile_id === "string"
+            ? data.default_profile_id
+            : profiles[0].profile_id
+        );
+        let storedProfileId = null;
+        try {
+          storedProfileId = localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);
+        } catch (err) {
+          storedProfileId = null;
+        }
+        const selectedId = (
+          storedProfileId && propertyProfilesById.has(storedProfileId)
+            ? storedProfileId
+            : defaultProfileId
+        );
+        setSelectedPropertyProfile(selectedId);
+      } catch (err) {
+        selectedPropertyProfile = null;
+      }
+    }
+
+    function renderNumeric(items) {
+      if (!items || !items.length) {
+        numericWrapEl.innerHTML = '<p class="empty-note">No numeric comparison data.</p>';
+        return;
+      }
+      const rows = items.map((item) => `
+        <tr>
+          <td>${escHtml(item.column)}</td>
+          <td>${escHtml(String(item.owner_value ?? "n/a"))}</td>
+          <td>${escHtml(String(item.neighbor_avg ?? "n/a"))}</td>
+          <td>${escHtml(String(item.neighbor_min ?? "n/a"))}</td>
+          <td>${escHtml(String(item.neighbor_max ?? "n/a"))}</td>
+          <td>${escHtml(String(item.neighbor_count ?? 0))}</td>
+        </tr>
+      `).join("");
+      numericWrapEl.innerHTML = `
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Your Value</th>
+              <th>Neighbor Avg</th>
+              <th>Neighbor Min</th>
+              <th>Neighbor Max</th>
+              <th>Neighbor Count</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderCategorical(items) {
+      if (!items || !items.length) {
+        categoricalWrapEl.innerHTML = '<p class="empty-note">No categorical comparison data.</p>';
+        return;
+      }
+      categoricalWrapEl.innerHTML = `
+        <div class="category-grid">
+          ${items.map((item) => `
+            <div class="category-card">
+              <h3>${escHtml(item.column)}</h3>
+              <p class="muted">Your value: <strong>${escHtml(item.owner_value || "n/a")}</strong></p>
+              <div class="bucket-list">
+                ${(item.buckets || []).map((bucket) => `
+                  <div class="bucket-row">
+                    <span>${escHtml(bucket.value)}</span>
+                    <span>${escHtml(String(bucket.count))} (${escHtml(String(bucket.pct))}%)</span>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderSteps(steps) {
+      stepsEl.innerHTML = "";
+      if (!steps || !steps.length) {
+        stepsEl.textContent = "No steps recorded.";
+        return;
+      }
+      for (const step of steps) {
+        const div = document.createElement("div");
+        div.className = "step";
+        div.innerHTML = `
+          <details>
+            <summary>
+              <span class="module-badge">${escHtml(step.module || "module")}</span>
+              <span>Step details</span>
+            </summary>
+            <strong>prompt</strong>
+            <pre class="json">${jsonHighlighted(step.prompt)}</pre>
+            <strong>response</strong>
+            <pre class="json">${jsonHighlighted(step.response)}</pre>
+          </details>
+        `;
+        stepsEl.appendChild(div);
+      }
+    }
+
+    async function runAnalysis() {
+      if (!selectedPropertyProfile || !selectedPropertyProfile.property_id) {
+        statusEl.textContent = "No property selected.";
+        return;
+      }
+      runBtn.disabled = true;
+      statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Running...';
+      narrativeEl.textContent = "Working...";
+      numericWrapEl.innerHTML = '<p class="empty-note">Loading...</p>';
+      categoricalWrapEl.innerHTML = '<p class="empty-note">Loading...</p>';
+      stepsEl.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/analysis", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            property_id: selectedPropertyProfile.property_id,
+            category: selectedCategory,
+          }),
+        });
+        const data = await res.json();
+        if (data.status === "error") {
+          narrativeEl.textContent = data.error || "Analysis failed.";
+          numericWrapEl.innerHTML = '<p class="empty-note">No numeric comparison data.</p>';
+          categoricalWrapEl.innerHTML = '<p class="empty-note">No categorical comparison data.</p>';
+        } else {
+          narrativeEl.textContent = data.response || "No narrative returned.";
+          renderNumeric(data.numeric_comparison || []);
+          renderCategorical(data.categorical_comparison || []);
+        }
+        renderSteps(data.steps || []);
+        statusEl.textContent = `Done (${data.status})`;
+      } catch (err) {
+        narrativeEl.textContent = String(err);
+        numericWrapEl.innerHTML = '<p class="empty-note">No numeric comparison data.</p>';
+        categoricalWrapEl.innerHTML = '<p class="empty-note">No categorical comparison data.</p>';
+        statusEl.textContent = "Failed";
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    categoryButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectedCategory = btn.dataset.category || "review_scores";
+        categoryButtons.forEach((other) => other.classList.toggle("active", other === btn));
+      });
+    });
+
+    propertyProfileEl.addEventListener("change", () => {
+      setSelectedPropertyProfile(propertyProfileEl.value);
+    });
+    runBtn.addEventListener("click", runAnalysis);
+
+    loadPropertyProfiles();
+  </script>
+</body>
+</html>

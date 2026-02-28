@@ -129,6 +129,52 @@ class PropertyProfilesResponse(BaseModel):
     profiles: list[PropertyProfileResponse]
 
 
+class AnalysisRequest(BaseModel):
+    """Request payload for structured competitive analysis runs."""
+
+    property_id: str | None = None
+    category: Literal["review_scores", "property_specs"] = "review_scores"
+
+
+class AnalysisNumericItem(BaseModel):
+    """One numeric comparison row for owner vs. neighbors."""
+
+    column: str
+    owner_value: float | int | None
+    neighbor_avg: float | None
+    neighbor_min: float | None
+    neighbor_max: float | None
+    neighbor_count: int
+
+
+class AnalysisCategoryBucket(BaseModel):
+    """One categorical distribution bucket among neighbor listings."""
+
+    value: str
+    count: int
+    pct: float
+
+
+class AnalysisCategoricalItem(BaseModel):
+    """One categorical comparison item for owner vs. neighbor distribution."""
+
+    column: str
+    owner_value: str | None
+    neighbor_count: int
+    buckets: list[AnalysisCategoryBucket]
+
+
+class AnalysisResponse(BaseModel):
+    """Response payload for analyst-agent runs."""
+
+    status: Literal["ok", "error"]
+    error: str | None
+    response: str | None
+    numeric_comparison: list[AnalysisNumericItem]
+    categorical_comparison: list[AnalysisCategoricalItem]
+    steps: list[StepLog]
+
+
 class MarketAlertResponse(BaseModel):
     """Serialized alert item exposed by market-watch inbox endpoint."""
 

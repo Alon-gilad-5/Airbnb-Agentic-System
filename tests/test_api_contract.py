@@ -13,6 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
+from app.agents.analyst_agent import AnalystAgent
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.router_agent import RouterAgent
 from app.schemas import ExecuteRequest
@@ -93,6 +94,85 @@ class DummyProviders:
 class DummyAlertStore:
     def insert_alerts(self, records: list) -> int:
         return len(records)
+
+
+class DummyNeighborStore:
+    def __init__(self, neighbors: list[str] | None = None) -> None:
+        self._neighbors = neighbors or ["n1", "n2"]
+
+    def get_neighbors(self, property_id: str) -> list[str] | None:
+        return list(self._neighbors)
+
+
+class DummyListingStore:
+    def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
+        self._rows = rows or [
+            {
+                "id": "42409434",
+                "name": "The Burlington Hotel",
+                "review_scores_rating": 4.55,
+                "review_scores_accuracy": 4.40,
+                "review_scores_cleanliness": 4.60,
+                "review_scores_checkin": 4.70,
+                "review_scores_communication": 4.75,
+                "review_scores_location": 4.10,
+                "review_scores_value": 4.00,
+                "property_type": "Room in hotel",
+                "room_type": "Private room",
+                "accommodates": 2,
+                "bathrooms": 1,
+                "bedrooms": 1,
+                "beds": 1,
+                "price": "$120.00",
+                "host_is_superhost": "t",
+            },
+            {
+                "id": "n1",
+                "name": "Neighbor One",
+                "review_scores_rating": 4.30,
+                "review_scores_accuracy": 4.10,
+                "review_scores_cleanliness": 4.20,
+                "review_scores_checkin": 4.40,
+                "review_scores_communication": 4.35,
+                "review_scores_location": 4.00,
+                "review_scores_value": 4.10,
+                "property_type": "Room in hotel",
+                "room_type": "Private room",
+                "accommodates": 2,
+                "bathrooms": 1,
+                "bedrooms": 1,
+                "beds": 1,
+                "price": "$115.00",
+                "host_is_superhost": "f",
+            },
+            {
+                "id": "n2",
+                "name": "Neighbor Two",
+                "review_scores_rating": 4.10,
+                "review_scores_accuracy": 4.05,
+                "review_scores_cleanliness": 4.15,
+                "review_scores_checkin": 4.25,
+                "review_scores_communication": 4.20,
+                "review_scores_location": 4.05,
+                "review_scores_value": 3.90,
+                "property_type": "Apartment",
+                "room_type": "Entire home/apt",
+                "accommodates": 3,
+                "bathrooms": 1,
+                "bedrooms": 1,
+                "beds": 2,
+                "price": "$140.00",
+                "host_is_superhost": "t",
+            },
+        ]
+
+    def get_listings_by_ids(self, listing_ids: list[str], columns: list[str]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for row in self._rows:
+            if row["id"] not in listing_ids:
+                continue
+            out.append({column: row.get(column) for column in ["id", "name", *columns]})
+        return out
 
 
 # -- API schema contract tests --
@@ -246,12 +326,31 @@ MARKET_WATCH_MODULE_NAMES = {
     "market_watch_agent.answer_generation",
 }
 
+ANALYST_MODULE_NAMES = {
+    "analyst_agent.neighbor_lookup",
+    "analyst_agent.data_fetch",
+    "analyst_agent.comparison_compute",
+    "analyst_agent.answer_generation",
+}
+
 
 def _make_market_agent() -> MarketWatchAgent:
     return MarketWatchAgent(
         providers=DummyProviders(),
         alert_store=DummyAlertStore(),
         config=MarketWatchAgentConfig(),
+    )
+
+
+def _make_analyst_agent(
+    *,
+    chat_available: bool = True,
+    chat_response: str = "Structured benchmark narrative.",
+) -> AnalystAgent:
+    return AnalystAgent(
+        listing_store=DummyListingStore(),
+        neighbor_store=DummyNeighborStore(),
+        chat_service=DummyChatService(is_available=chat_available, _response=chat_response),
     )
 
 
@@ -284,6 +383,37 @@ def test_market_watch_autonomous_returns_outcome() -> None:
     assert isinstance(outcome.inserted_count, int)
 
 
+def test_analyst_agent_review_scores_returns_full_trace() -> None:
+    agent = _make_analyst_agent()
+    result = agent.run(
+        "Compare my review scores against nearby competitors.",
+        context={"property_id": "42409434", "analysis_category": "review_scores"},
+    )
+
+    assert isinstance(result.response, str)
+    assert len(result.response) > 0
+    module_names = [s.module for s in result.steps]
+    for step in result.steps:
+        assert step.module in ANALYST_MODULE_NAMES
+        assert isinstance(step.prompt, dict)
+        assert isinstance(step.response, dict)
+    assert "analyst_agent.neighbor_lookup" in module_names
+    assert "analyst_agent.answer_generation" in module_names
+
+
+def test_analyst_agent_without_chat_uses_fallback_summary() -> None:
+    agent = _make_analyst_agent(chat_available=False)
+    result = agent.run(
+        "Compare my property specs against neighbors.",
+        context={"property_id": "42409434", "analysis_category": "property_specs"},
+    )
+
+    assert "Competitive analysis completed" in result.response
+    module_names = {s.module for s in result.steps}
+    assert "analyst_agent.comparison_compute" in module_names
+    assert "analyst_agent.answer_generation" in module_names
+
+
 # -- Router contract tests --
 
 
@@ -299,6 +429,13 @@ def test_router_market_keywords() -> None:
     router = RouterAgent()
     decision, step = router.route("Any nearby events next week?")
     assert decision.agent_name == "market_watch_agent"
+    assert step.module == "router_agent"
+
+
+def test_router_analyst_keywords() -> None:
+    router = RouterAgent()
+    decision, step = router.route("Can you benchmark my property specs?")
+    assert decision.agent_name == "analyst_agent"
     assert step.module == "router_agent"
 
 
