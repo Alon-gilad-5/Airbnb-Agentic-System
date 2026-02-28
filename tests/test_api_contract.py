@@ -16,7 +16,7 @@ from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.analyst_agent import AnalystAgent
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.router_agent import RouterAgent
-from app.schemas import AnalysisRequest, ExecuteRequest
+from app.schemas import AnalysisExplainSelectionRequest, AnalysisRequest, ExecuteRequest
 from app.services.pinecone_retriever import RetrievedReview
 from app.services.web_review_ingest import WebIngestResult
 from app.services.web_review_scraper import ScrapedReview
@@ -194,6 +194,20 @@ def test_analysis_request_with_openrouter_provider_is_valid() -> None:
         llm_provider="openrouter",
     )
     assert payload.prompt == "How do I compare to nearby competitors on cleanliness?"
+    assert payload.llm_provider == "openrouter"
+
+
+def test_analysis_explain_selection_request_is_valid() -> None:
+    payload = AnalysisExplainSelectionRequest(
+        property_id="42409434",
+        prompt="How are my review scores compared to my neighbors?",
+        category="review_scores",
+        selection_type="numeric_point",
+        metric_column="review_scores_rating",
+        selection_payload={"listing_id": "n1", "selected_value": 4.7},
+        llm_provider="openrouter",
+    )
+    assert payload.metric_column == "review_scores_rating"
     assert payload.llm_provider == "openrouter"
 
 
@@ -408,6 +422,8 @@ def test_analyst_agent_review_scores_returns_full_trace() -> None:
         assert isinstance(step.response, dict)
     assert "analyst_agent.neighbor_lookup" in module_names
     assert "analyst_agent.answer_generation" in module_names
+    first_numeric = result.steps[2].response["numeric_items"]
+    assert first_numeric == 7
 
 
 def test_analyst_agent_infers_review_scores_from_reviews_score_wording() -> None:
@@ -421,6 +437,87 @@ def test_analyst_agent_infers_review_scores_from_reviews_score_wording() -> None
     assert data_fetch_step.prompt["category"] == "review_scores"
     assert len(outcome.numeric_comparison) == 7
     assert len(outcome.categorical_comparison) == 0
+    assert outcome.analysis_category == "review_scores"
+
+
+def test_analyst_agent_numeric_items_include_neighbor_points_and_ties() -> None:
+    agent = AnalystAgent(
+        listing_store=DummyListingStore(rows=[
+            {
+                "id": "42409434",
+                "name": "Owner",
+                "review_scores_rating": 4.6,
+            },
+            {
+                "id": "n1",
+                "name": "Neighbor One",
+                "review_scores_rating": 5.0,
+            },
+            {
+                "id": "n2",
+                "name": "Neighbor Two",
+                "review_scores_rating": 5.0,
+            },
+            {
+                "id": "n3",
+                "name": "Neighbor Three",
+                "review_scores_rating": 4.1,
+            },
+        ]),
+        neighbor_store=DummyNeighborStore(neighbors=["n1", "n2", "n3"]),
+        chat_service=DummyChatService(),
+    )
+
+    outcome = agent.analyze(
+        "How are my review scores compared to nearby competitors?",
+        context={"property_id": "42409434", "analysis_category": "review_scores"},
+    )
+
+    rating_item = outcome.numeric_comparison[0]
+    assert rating_item.label == "Overall Rating"
+    assert len(rating_item.neighbor_points) == 3
+    assert [point.listing_id for point in rating_item.neighbor_max_points] == ["n1", "n2"]
+    assert [point.listing_id for point in rating_item.neighbor_min_points] == ["n3"]
+
+
+def test_analyst_agent_categorical_buckets_include_membership_lists() -> None:
+    agent = _make_analyst_agent()
+    outcome = agent.analyze(
+        "How do my property specs compare to nearby competitors?",
+        context={"property_id": "42409434", "analysis_category": "property_specs"},
+    )
+
+    bucket = outcome.categorical_comparison[0].buckets[0]
+    assert bucket.listing_ids
+    assert bucket.listing_names
+
+
+def test_analyst_agent_owner_selection_fallback_uses_owner_wording() -> None:
+    agent = _make_analyst_agent(chat_available=False)
+    result = agent.explain_selection(
+        prompt="How are my review scores compared to my neighbors?",
+        property_id="42409434",
+        category="review_scores",
+        selection_type="numeric_point",
+        metric_column="review_scores_rating",
+        selection_payload={
+            "metric_label": "Overall Rating",
+            "point_role": "owner",
+            "listing_id": "42409434",
+            "listing_name": "The Burlington Hotel",
+            "selected_value": 4.55,
+            "owner_value": 4.55,
+            "neighbor_avg": 4.35,
+            "neighbor_count": 3,
+            "higher_count": 1,
+            "tied_count": 1,
+            "lower_count": 1,
+        },
+    )
+
+    assert "Your property is at 4.55 for Overall Rating" in result.response
+    assert "1 are above you, 1 are tied, and 1 are below you" in result.response
+    assert "selected listing ranks" not in result.response
 
 
 def test_analyst_agent_without_chat_uses_fallback_summary() -> None:

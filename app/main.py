@@ -29,6 +29,8 @@ from app.architecture import ensure_architecture_png
 from app.config import ActiveOwnerContext, load_settings
 from app.schemas import (
     ActiveOwnerContextResponse,
+    AnalysisExplainSelectionRequest,
+    AnalysisExplainSelectionResponse,
     AnalysisRequest,
     AnalysisResponse,
     AgentInfoResponse,
@@ -596,6 +598,36 @@ def _build_active_owner_context() -> ActiveOwnerContextResponse:
     )
 
 
+def _resolve_analysis_agent(
+    requested_provider_raw: str | None,
+) -> tuple[AnalystAgent | None, str | None]:
+    """Resolve analysis agent/provider pair and return an error string when invalid."""
+
+    requested_provider = (requested_provider_raw or "default").strip().lower()
+    provider_is_explicit = requested_provider in VALID_CHAT_PROVIDERS
+    resolved_provider = (
+        default_chat_provider
+        if requested_provider in {"", "default"}
+        else requested_provider
+    )
+    if resolved_provider not in VALID_CHAT_PROVIDERS:
+        resolved_provider = default_chat_provider
+
+    provider_chat_service = chat_services_by_provider.get(resolved_provider)
+    if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+        return None, (
+            f"Requested llm_provider '{resolved_provider}' is not configured. "
+            "Set required provider env vars and retry."
+        )
+
+    target_agent = analysis_agents_by_provider.get(resolved_provider)
+    if target_agent is None:
+        target_agent = analysis_agents_by_provider.get(default_chat_provider)
+    if target_agent is None:
+        target_agent = analyst_agent
+    return target_agent, None
+
+
 def _build_property_profiles_response() -> PropertyProfilesResponse:
     """Return profile list consumed by the reviews/market-watch UIs."""
 
@@ -1109,35 +1141,17 @@ def market_watch_run(
 def run_analysis(payload: AnalysisRequest) -> AnalysisResponse:
     """Run prompt-driven neighbor benchmarking analysis for one property."""
 
-    requested_provider = (payload.llm_provider or "default").strip().lower()
-    provider_is_explicit = requested_provider in VALID_CHAT_PROVIDERS
-    resolved_provider = (
-        default_chat_provider
-        if requested_provider in {"", "default"}
-        else requested_provider
-    )
-    if resolved_provider not in VALID_CHAT_PROVIDERS:
-        resolved_provider = default_chat_provider
-
-    provider_chat_service = chat_services_by_provider.get(resolved_provider)
-    if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+    target_agent, provider_error = _resolve_analysis_agent(payload.llm_provider)
+    if provider_error:
         return AnalysisResponse(
             status="error",
-            error=(
-                f"Requested llm_provider '{resolved_provider}' is not configured. "
-                f"Set required provider env vars and retry."
-            ),
+            error=provider_error,
             response=None,
+            analysis_category=None,
             numeric_comparison=[],
             categorical_comparison=[],
             steps=[],
         )
-
-    target_agent = analysis_agents_by_provider.get(resolved_provider)
-    if target_agent is None:
-        target_agent = analysis_agents_by_provider.get(default_chat_provider)
-    if target_agent is None:
-        target_agent = analyst_agent
 
     property_id = (
         payload.property_id.strip()
@@ -1155,11 +1169,13 @@ def run_analysis(payload: AnalysisRequest) -> AnalysisResponse:
     )
 
     try:
+        assert target_agent is not None
         outcome = target_agent.analyze(prompt, context=context)
         return AnalysisResponse(
             status=("error" if outcome.error else "ok"),
             error=outcome.error,
             response=(None if outcome.error else outcome.narrative),
+            analysis_category=outcome.analysis_category,
             numeric_comparison=outcome.numeric_comparison,
             categorical_comparison=outcome.categorical_comparison,
             steps=outcome.steps,
@@ -1169,8 +1185,47 @@ def run_analysis(payload: AnalysisRequest) -> AnalysisResponse:
             status="error",
             error=f"{type(exc).__name__}: {exc}",
             response=None,
+            analysis_category=None,
             numeric_comparison=[],
             categorical_comparison=[],
+            steps=[],
+        )
+
+
+@app.post("/api/analysis/explain-selection", response_model=AnalysisExplainSelectionResponse)
+def explain_analysis_selection(payload: AnalysisExplainSelectionRequest) -> AnalysisExplainSelectionResponse:
+    """Explain one selected visualization element from the analysis console."""
+
+    target_agent, provider_error = _resolve_analysis_agent(payload.llm_provider)
+    if provider_error:
+        return AnalysisExplainSelectionResponse(
+            status="error",
+            error=provider_error,
+            response=None,
+            steps=[],
+        )
+
+    try:
+        assert target_agent is not None
+        result = target_agent.explain_selection(
+            prompt=payload.prompt,
+            property_id=payload.property_id,
+            category=payload.category,
+            selection_type=payload.selection_type,
+            metric_column=payload.metric_column,
+            selection_payload=payload.selection_payload,
+        )
+        return AnalysisExplainSelectionResponse(
+            status="ok",
+            error=None,
+            response=result.response,
+            steps=result.steps,
+        )
+    except Exception as exc:
+        return AnalysisExplainSelectionResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            response=None,
             steps=[],
         )
 

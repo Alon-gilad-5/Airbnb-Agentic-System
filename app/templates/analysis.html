@@ -5,435 +5,106 @@
   <title>Analysis Console</title>
   <link rel="stylesheet" href="/static/base.css">
   <style>
-    textarea {
-      width: 100%;
-      min-height: 130px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
-      font: inherit;
-      resize: vertical;
-    }
-    select {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 8px 10px;
-      font: inherit;
-      background: #fff;
-      color: var(--ink);
-    }
-    .row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-      align-items: center;
-    }
-    .comparison-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.95rem;
-    }
-    .comparison-table th,
-    .comparison-table td {
-      border-bottom: 1px solid var(--border);
-      padding: 10px 12px;
-      text-align: left;
-      vertical-align: top;
-    }
-    .comparison-table th {
-      color: var(--muted);
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .category-grid {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    }
-    .category-card {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
-      background: #fbfdff;
-    }
-    .category-card h3 {
-      margin: 0 0 8px;
-      font-size: 1rem;
-    }
-    .bucket-list {
-      display: grid;
-      gap: 6px;
-    }
-    .bucket-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      color: var(--muted);
-    }
-    .narrative {
-      white-space: pre-wrap;
-      line-height: 1.6;
-    }
-    .steps {
-      display: grid;
-      gap: 10px;
-    }
-    .step {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #fcfeff;
-      overflow: hidden;
-    }
-    .step details {
-      padding: 8px 10px;
-    }
-    .step summary {
-      cursor: pointer;
-      list-style: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 600;
-    }
-    .step summary::-webkit-details-marker {
-      display: none;
-    }
-    .module-badge {
-      font-size: 0.8rem;
-      border-radius: 999px;
-      padding: 2px 8px;
-      background: #dbeafe;
-      color: #1e40af;
-    }
-    pre {
-      background: #f8fbfe;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      overflow: auto;
-      margin: 6px 0 0 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .json .k { color: #0f766e; }
-    .json .s { color: #1e40af; }
-    .json .n { color: #92400e; }
-    .json .b { color: #6d28d9; }
-    .json .nl { color: #9f1239; }
-    .empty-note { color: var(--muted); }
+    textarea{width:100%;min-height:130px;border:1px solid var(--border);border-radius:10px;padding:10px;font:inherit;resize:vertical}
+    select{border:1px solid var(--border);border-radius:10px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
+    .analysis-shell{display:grid;gap:16px;grid-template-columns:minmax(0,1.7fr) minmax(320px,.9fr);align-items:start}
+    .analysis-main{display:grid;gap:16px}.selection-drawer{position:sticky;top:24px}
+    .drawer-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.drawer-head h2{margin:0}
+    .selection-badge{font-size:.8rem;border-radius:999px;padding:4px 10px;background:#dbeafe;color:#1e40af;font-weight:600}
+    .metric-grid,.category-grid{display:grid;gap:12px}.metric-grid{grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+    .metric-card,.category-card{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fbfdff}
+    .metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}.metric-head h3,.category-card h3{margin:0;font-size:1rem}
+    .metric-chip{border-radius:999px;padding:4px 10px;background:rgba(15,118,110,.12);color:var(--accent);font-size:.84rem;font-weight:600;white-space:nowrap}
+    .metric-subtitle,.bucket-label span,.bucket-meta,.drawer-subtitle{color:var(--muted);font-size:.86rem}
+    .numeric-chart{width:100%;height:auto;display:block;overflow:visible}.chart-axis{stroke:#9fb2c2;stroke-width:2}.chart-axis-label{fill:var(--muted);font-size:11px}
+    .chart-range{stroke:#b9c9d6;stroke-width:10;stroke-linecap:round}.chart-neighbor-point{fill:#7a93a8;cursor:pointer;transition:transform .12s ease,fill .12s ease}
+    .chart-neighbor-point:hover,.chart-neighbor-point:focus-visible{fill:var(--accent2);transform:scale(1.1)}.chart-neighbor-point.is-extreme{stroke:#24475f;stroke-width:2;fill:#4b677d}
+    .chart-owner-marker{fill:var(--accent);stroke:#0d4f5f;stroke-width:2;cursor:pointer}.chart-avg-line{stroke:#cc7a00;stroke-width:3;stroke-dasharray:6 4;cursor:pointer}
+    .chart-avg-label{fill:#a16207;font-size:11px;font-weight:700;cursor:pointer}.metric-legend,.metric-actions,.drawer-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .legend-pill,.metric-action{border-radius:999px;padding:5px 10px;font-size:.82rem;border:1px solid var(--border);background:#fff;color:var(--muted)}
+    .legend-pill.owner{color:var(--accent);border-color:rgba(15,118,110,.25)}.legend-pill.avg{color:#a16207;border-color:rgba(161,98,7,.22)}.legend-pill.neighbor{color:#4b677d}
+    .metric-action{cursor:pointer;font-weight:600}.metric-action:hover,.metric-action:focus-visible{background:#eef5f9;color:var(--ink)}
+    .bucket-list,.listing-list{display:grid;gap:8px}.bucket-list{margin-top:12px}.bucket-button{position:relative;overflow:hidden;width:100%;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--ink);text-align:left;padding:10px 12px;cursor:pointer}
+    .bucket-button:hover,.bucket-button:focus-visible{background:#f4f9fc}.bucket-button.owner-bucket{border-color:rgba(15,118,110,.28);box-shadow:inset 0 0 0 1px rgba(15,118,110,.12)}
+    .bucket-fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,rgba(31,95,139,.16),rgba(15,118,110,.08));pointer-events:none}
+    .bucket-content{position:relative;display:flex;justify-content:space-between;gap:12px;align-items:center}.bucket-label{display:grid;gap:2px}.bucket-label strong{font-size:.95rem}
+    .narrative,.drawer-explanation{white-space:pre-wrap;line-height:1.6}.fact-list{margin:0;padding-left:18px;display:grid;gap:8px}.listing-list{margin-top:14px;max-height:260px;overflow:auto;padding-right:4px}
+    .listing-item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fbfdff}.listing-item strong{display:block;margin-bottom:4px}
+    .steps{display:grid;gap:10px}.step{border:1px solid var(--border);border-radius:10px;background:#fcfeff;overflow:hidden}.step details{padding:8px 10px}
+    .step summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-weight:600}.step summary::-webkit-details-marker{display:none}
+    .module-badge{font-size:.8rem;border-radius:999px;padding:2px 8px;background:#dbeafe;color:#1e40af}
+    pre{background:#f8fbfe;border:1px solid var(--border);border-radius:10px;padding:12px;overflow:auto;margin:6px 0 0;white-space:pre-wrap;word-break:break-word}
+    .json .k{color:#0f766e}.json .s{color:#1e40af}.json .n{color:#92400e}.json .b{color:#6d28d9}.json .nl{color:#9f1239}.empty-note{color:var(--muted)}
+    @media (max-width:1080px){.analysis-shell{grid-template-columns:1fr}.selection-drawer{position:static}}
   </style>
 </head>
 <body>
   <main class="layout">
     <section class="card">
       <div class="nav">
-        <a href="/">Reviews Console</a>
-        <a href="/mail">Mail Console</a>
-        <a href="/market-watch">Market Watch</a>
-        <a href="/analysis" class="active" aria-current="page">Analysis</a>
+        <a href="/">Reviews Console</a><a href="/mail">Mail Console</a><a href="/market-watch">Market Watch</a><a href="/analysis" class="active" aria-current="page">Analysis</a>
       </div>
       <h1>Analysis Console</h1>
       <p>Ask the analyst how your property compares to nearby neighbors and inspect the structured benchmark data underneath.</p>
     </section>
-
     <section class="card">
       <label for="prompt"><strong>Prompt</strong></label>
       <textarea id="prompt" aria-label="Analysis prompt" placeholder="Example: How are my review scores compared to my neighbors?"></textarea>
       <div class="row">
-        <label for="propertyProfile" class="muted">Property</label>
-        <select id="propertyProfile" aria-label="Property profile">
-          <option value="primary">Primary</option>
-        </select>
-        <label for="llmProvider" class="muted">Provider</label>
-        <select id="llmProvider" aria-label="LLM provider">
-          <option value="default">Default</option>
-          <option value="llmod">LLMOD</option>
-          <option value="openrouter">OpenRouter</option>
-        </select>
-        <button id="runBtn">Run Analysis</button>
-        <span id="status" class="muted">Idle</span>
+        <label for="propertyProfile" class="muted">Property</label><select id="propertyProfile" aria-label="Property profile"><option value="primary">Primary</option></select>
+        <label for="llmProvider" class="muted">Provider</label><select id="llmProvider" aria-label="LLM provider"><option value="default">Default</option><option value="llmod">LLMOD</option><option value="openrouter">OpenRouter</option></select>
+        <button id="runBtn">Run Analysis</button><span id="status" class="muted">Idle</span>
       </div>
     </section>
-
-    <section class="card">
-      <h2>Narrative</h2>
-      <div id="narrative" class="narrative empty-note">No run yet.</div>
-    </section>
-
-    <section class="card">
-      <h2>Numeric Comparison</h2>
-      <div id="numericWrap" class="empty-note">No run yet.</div>
-    </section>
-
-    <section class="card">
-      <h2>Categorical Comparison</h2>
-      <div id="categoricalWrap" class="empty-note">No run yet.</div>
-    </section>
-
-    <section class="card">
-      <h2>Steps</h2>
-      <div id="steps" class="steps"></div>
-    </section>
-  </main>
-
-  <script>
-    const promptEl = document.getElementById("prompt");
-    const propertyProfileEl = document.getElementById("propertyProfile");
-    const providerEl = document.getElementById("llmProvider");
-    const runBtn = document.getElementById("runBtn");
-    const statusEl = document.getElementById("status");
-    const narrativeEl = document.getElementById("narrative");
-    const numericWrapEl = document.getElementById("numericWrap");
-    const categoricalWrapEl = document.getElementById("categoricalWrap");
-    const stepsEl = document.getElementById("steps");
-    const LLM_PROVIDER_STORAGE_KEY = "analysis_console_llm_provider";
-    const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
-    const allowedProviders = new Set(["default", "llmod", "openrouter"]);
-    let propertyProfilesById = new Map();
-    let selectedPropertyProfile = null;
-
-    try {
-      const storedProvider = localStorage.getItem(LLM_PROVIDER_STORAGE_KEY);
-      if (storedProvider && allowedProviders.has(storedProvider)) {
-        providerEl.value = storedProvider;
-      }
-    } catch (err) {
-      // Ignore storage errors.
-    }
-
-    function escHtml(str) {
-      const d = document.createElement("div");
-      d.textContent = str || "";
-      return d.innerHTML;
-    }
-
-    function jsonHighlighted(obj) {
-      const json = JSON.stringify(obj ?? {}, null, 2);
-      return escHtml(json).replace(
-        /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,
-        (match) => {
-          let cls = "n";
-          if (/^"/.test(match)) cls = /:$/.test(match) ? "k" : "s";
-          else if (/true|false/.test(match)) cls = "b";
-          else if (/null/.test(match)) cls = "nl";
-          return `<span class="${cls}">${match}</span>`;
-        }
-      );
-    }
-
-    function setSelectedPropertyProfile(profileId) {
-      if (!profileId || !propertyProfilesById.has(profileId)) {
-        selectedPropertyProfile = null;
-        return;
-      }
-      selectedPropertyProfile = propertyProfilesById.get(profileId) || null;
-      propertyProfileEl.value = profileId;
-      try {
-        localStorage.setItem(PROPERTY_PROFILE_STORAGE_KEY, profileId);
-      } catch (err) {
-        // Ignore storage errors.
-      }
-    }
-
-    async function loadPropertyProfiles() {
-      propertyProfileEl.innerHTML = '<option value="primary">Primary</option>';
-      propertyProfilesById = new Map();
-      selectedPropertyProfile = null;
-
-      try {
-        const res = await fetch("/api/property_profiles");
-        const data = await res.json();
-        const profiles = Array.isArray(data.profiles) ? data.profiles : [];
-        if (!profiles.length) {
-          return;
-        }
-
-        propertyProfileEl.innerHTML = "";
-        for (const profile of profiles) {
-          if (!profile || typeof profile.profile_id !== "string") continue;
-          propertyProfilesById.set(profile.profile_id, profile);
-          const opt = document.createElement("option");
-          opt.value = profile.profile_id;
-          opt.textContent = profile.property_name || profile.property_id || profile.profile_id;
-          propertyProfileEl.appendChild(opt);
-        }
-
-        const defaultProfileId = (
-          typeof data.default_profile_id === "string"
-            ? data.default_profile_id
-            : profiles[0].profile_id
-        );
-        let storedProfileId = null;
-        try {
-          storedProfileId = localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);
-        } catch (err) {
-          storedProfileId = null;
-        }
-        const selectedId = (
-          storedProfileId && propertyProfilesById.has(storedProfileId)
-            ? storedProfileId
-            : defaultProfileId
-        );
-        setSelectedPropertyProfile(selectedId);
-      } catch (err) {
-        selectedPropertyProfile = null;
-      }
-    }
-
-    function renderNumeric(items) {
-      if (!items || !items.length) {
-        numericWrapEl.innerHTML = '<p class="empty-note">No numeric comparison data.</p>';
-        return;
-      }
-      const rows = items.map((item) => `
-        <tr>
-          <td>${escHtml(item.column)}</td>
-          <td>${escHtml(String(item.owner_value ?? "n/a"))}</td>
-          <td>${escHtml(String(item.neighbor_avg ?? "n/a"))}</td>
-          <td>${escHtml(String(item.neighbor_min ?? "n/a"))}</td>
-          <td>${escHtml(String(item.neighbor_max ?? "n/a"))}</td>
-          <td>${escHtml(String(item.neighbor_count ?? 0))}</td>
-        </tr>
-      `).join("");
-      numericWrapEl.innerHTML = `
-        <table class="comparison-table">
-          <thead>
-            <tr>
-              <th>Column</th>
-              <th>Your Value</th>
-              <th>Neighbor Avg</th>
-              <th>Neighbor Min</th>
-              <th>Neighbor Max</th>
-              <th>Neighbor Count</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      `;
-    }
-
-    function renderCategorical(items) {
-      if (!items || !items.length) {
-        categoricalWrapEl.innerHTML = '<p class="empty-note">No categorical comparison data.</p>';
-        return;
-      }
-      categoricalWrapEl.innerHTML = `
-        <div class="category-grid">
-          ${items.map((item) => `
-            <div class="category-card">
-              <h3>${escHtml(item.column)}</h3>
-              <p class="muted">Your value: <strong>${escHtml(item.owner_value || "n/a")}</strong></p>
-              <div class="bucket-list">
-                ${(item.buckets || []).map((bucket) => `
-                  <div class="bucket-row">
-                    <span>${escHtml(bucket.value)}</span>
-                    <span>${escHtml(String(bucket.count))} (${escHtml(String(bucket.pct))}%)</span>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          `).join("")}
+    <section class="card"><h2>Narrative</h2><div id="narrative" class="narrative empty-note">No run yet.</div></section>
+    <section class="analysis-shell">
+      <div class="analysis-main">
+        <section class="card"><h2>Numeric Comparison</h2><div id="numericWrap" class="empty-note">No numeric comparison data.</div></section>
+        <section class="card"><h2>Categorical Comparison</h2><div id="categoricalWrap" class="empty-note">No categorical comparison data.</div></section>
+      </div>
+      <aside class="card selection-drawer">
+        <div class="drawer-head"><h2>Selection</h2><span id="selectionBadge" class="selection-badge">None</span></div>
+        <div id="selectionEmpty" class="empty-note">Select any plotted point, min/max/avg marker, or categorical bucket to inspect the underlying neighbor data.</div>
+        <div id="selectionContent" hidden>
+          <h3 id="selectionTitle"></h3><p id="selectionSubtitle" class="drawer-subtitle"></p><ul id="selectionFacts" class="fact-list"></ul>
+          <div id="selectionListingsWrap" hidden><h3>Listings</h3><div id="selectionListings" class="listing-list"></div></div>
+          <div class="drawer-actions"><button id="explainSelectionBtn" type="button" disabled>Explain this</button><span id="selectionExplainStatus" class="muted"></span></div>
+          <div id="selectionExplanation" class="drawer-explanation empty-note">No explanation yet.</div>
         </div>
-      `;
-    }
+      </aside>
+    </section>
+    <section class="card"><h2>Steps</h2><div id="steps" class="steps"></div></section>
+  </main>
+  <script>
+    const promptEl=document.getElementById("prompt"),propertyProfileEl=document.getElementById("propertyProfile"),providerEl=document.getElementById("llmProvider"),runBtn=document.getElementById("runBtn"),statusEl=document.getElementById("status"),narrativeEl=document.getElementById("narrative"),numericWrapEl=document.getElementById("numericWrap"),categoricalWrapEl=document.getElementById("categoricalWrap"),stepsEl=document.getElementById("steps"),selectionBadgeEl=document.getElementById("selectionBadge"),selectionEmptyEl=document.getElementById("selectionEmpty"),selectionContentEl=document.getElementById("selectionContent"),selectionTitleEl=document.getElementById("selectionTitle"),selectionSubtitleEl=document.getElementById("selectionSubtitle"),selectionFactsEl=document.getElementById("selectionFacts"),selectionListingsWrapEl=document.getElementById("selectionListingsWrap"),selectionListingsEl=document.getElementById("selectionListings"),explainSelectionBtn=document.getElementById("explainSelectionBtn"),selectionExplainStatusEl=document.getElementById("selectionExplainStatus"),selectionExplanationEl=document.getElementById("selectionExplanation");
+    const LLM_PROVIDER_STORAGE_KEY="analysis_console_llm_provider",PROPERTY_PROFILE_STORAGE_KEY="active_property_profile_id",allowedProviders=new Set(["default","llmod","openrouter"]);
+    const analysisState={latestPrompt:"",analysisCategory:null,numericByColumn:new Map(),categoricalByColumn:new Map(),activeSelection:null};
+    let propertyProfilesById=new Map(),selectedPropertyProfile=null;
 
-    function renderSteps(steps) {
-      stepsEl.innerHTML = "";
-      if (!steps || !steps.length) {
-        stepsEl.textContent = "No steps recorded.";
-        return;
-      }
-      for (const step of steps) {
-        const div = document.createElement("div");
-        div.className = "step";
-        div.innerHTML = `
-          <details>
-            <summary>
-              <span class="module-badge">${escHtml(step.module || "module")}</span>
-              <span>Step details</span>
-            </summary>
-            <strong>prompt</strong>
-            <pre class="json">${jsonHighlighted(step.prompt)}</pre>
-            <strong>response</strong>
-            <pre class="json">${jsonHighlighted(step.response)}</pre>
-          </details>
-        `;
-        stepsEl.appendChild(div);
-      }
-    }
-
-    async function runAnalysis() {
-      if (!selectedPropertyProfile || !selectedPropertyProfile.property_id) {
-        statusEl.textContent = "No property selected.";
-        return;
-      }
-
-      const provider = allowedProviders.has(providerEl.value) ? providerEl.value : "default";
-      const prompt = promptEl.value.trim();
-      if (!prompt) {
-        statusEl.textContent = "Please enter a prompt.";
-        return;
-      }
-
-      try {
-        localStorage.setItem(LLM_PROVIDER_STORAGE_KEY, provider);
-      } catch (err) {
-        // Ignore storage errors.
-      }
-
-      runBtn.disabled = true;
-      statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Running...';
-      narrativeEl.textContent = "Working...";
-      numericWrapEl.innerHTML = '<p class="empty-note">Loading...</p>';
-      categoricalWrapEl.innerHTML = '<p class="empty-note">Loading...</p>';
-      stepsEl.innerHTML = "";
-
-      try {
-        const res = await fetch("/api/analysis", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            property_id: selectedPropertyProfile.property_id,
-            prompt,
-            llm_provider: provider,
-          }),
-        });
-        const data = await res.json();
-        if (data.status === "error") {
-          narrativeEl.textContent = data.error || "Analysis failed.";
-          numericWrapEl.innerHTML = '<p class="empty-note">No numeric comparison data.</p>';
-          categoricalWrapEl.innerHTML = '<p class="empty-note">No categorical comparison data.</p>';
-        } else {
-          narrativeEl.textContent = data.response || "No narrative returned.";
-          renderNumeric(data.numeric_comparison || []);
-          renderCategorical(data.categorical_comparison || []);
-        }
-        renderSteps(data.steps || []);
-        statusEl.textContent = `Done (${data.status})`;
-      } catch (err) {
-        narrativeEl.textContent = String(err);
-        numericWrapEl.innerHTML = '<p class="empty-note">No numeric comparison data.</p>';
-        categoricalWrapEl.innerHTML = '<p class="empty-note">No categorical comparison data.</p>';
-        statusEl.textContent = "Failed";
-      } finally {
-        runBtn.disabled = false;
-      }
-    }
-
-    propertyProfileEl.addEventListener("change", () => {
-      setSelectedPropertyProfile(propertyProfileEl.value);
-    });
-    runBtn.addEventListener("click", runAnalysis);
-    promptEl.addEventListener("keydown", (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault();
-        runAnalysis();
-      }
-    });
-
-    loadPropertyProfiles();
+    try{const storedProvider=localStorage.getItem(LLM_PROVIDER_STORAGE_KEY);if(storedProvider&&allowedProviders.has(storedProvider)){providerEl.value=storedProvider;}}catch(err){}
+    function escHtml(str){const d=document.createElement("div");d.textContent=str||"";return d.innerHTML;}
+    function jsonHighlighted(obj){const json=JSON.stringify(obj??{},null,2);return escHtml(json).replace(/("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,(match)=>{let cls="n";if(/^"/.test(match))cls=/:$/.test(match)?"k":"s";else if(/true|false/.test(match))cls="b";else if(/null/.test(match))cls="nl";return `<span class="${cls}">${match}</span>`;});}
+    function formatNumber(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);if(Math.abs(num-Math.round(num))<1e-9)return String(Math.round(num));return num.toFixed(2);}
+    function setSelectedPropertyProfile(profileId){if(!profileId||!propertyProfilesById.has(profileId)){selectedPropertyProfile=null;return;}selectedPropertyProfile=propertyProfilesById.get(profileId)||null;propertyProfileEl.value=profileId;try{localStorage.setItem(PROPERTY_PROFILE_STORAGE_KEY,profileId);}catch(err){}}
+    async function loadPropertyProfiles(){propertyProfileEl.innerHTML='<option value="primary">Primary</option>';propertyProfilesById=new Map();selectedPropertyProfile=null;try{const res=await fetch("/api/property_profiles");const data=await res.json();const profiles=Array.isArray(data.profiles)?data.profiles:[];if(!profiles.length)return;propertyProfileEl.innerHTML="";for(const profile of profiles){if(!profile||typeof profile.profile_id!=="string")continue;propertyProfilesById.set(profile.profile_id,profile);const opt=document.createElement("option");opt.value=profile.profile_id;opt.textContent=profile.property_name||profile.property_id||profile.profile_id;propertyProfileEl.appendChild(opt);}const defaultProfileId=typeof data.default_profile_id==="string"?data.default_profile_id:profiles[0].profile_id;let storedProfileId=null;try{storedProfileId=localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);}catch(err){storedProfileId=null;}const selectedId=storedProfileId&&propertyProfilesById.has(storedProfileId)?storedProfileId:defaultProfileId;setSelectedPropertyProfile(selectedId);}catch(err){selectedPropertyProfile=null;}}
+    function resetSelectionDrawer(){analysisState.activeSelection=null;selectionBadgeEl.textContent="None";selectionEmptyEl.hidden=false;selectionContentEl.hidden=true;selectionTitleEl.textContent="";selectionSubtitleEl.textContent="";selectionFactsEl.innerHTML="";selectionListingsWrapEl.hidden=true;selectionListingsEl.innerHTML="";selectionExplainStatusEl.textContent="";selectionExplanationEl.textContent="No explanation yet.";selectionExplanationEl.classList.add("empty-note");explainSelectionBtn.disabled=true;}
+    function openSelection(selection){analysisState.activeSelection=selection;selectionBadgeEl.textContent=selection.badge;selectionEmptyEl.hidden=true;selectionContentEl.hidden=false;selectionTitleEl.textContent=selection.title;selectionSubtitleEl.textContent=selection.subtitle||"";selectionFactsEl.innerHTML=(selection.facts||[]).map((fact)=>`<li><strong>${escHtml(fact.label)}:</strong> ${escHtml(fact.value)}</li>`).join("");const listings=selection.listings||[];if(listings.length){selectionListingsWrapEl.hidden=false;selectionListingsEl.innerHTML=listings.map((listing)=>`<div class="listing-item"><strong>${escHtml(listing.name||listing.id)}</strong><div class="muted">ID: ${escHtml(listing.id||"n/a")}</div>${listing.value!==undefined?`<div class="muted">Value: ${escHtml(formatNumber(listing.value))}</div>`:""}</div>`).join("");}else{selectionListingsWrapEl.hidden=true;selectionListingsEl.innerHTML="";}selectionExplainStatusEl.textContent="";selectionExplanationEl.textContent="No explanation yet.";selectionExplanationEl.classList.add("empty-note");explainSelectionBtn.disabled=false;}
+    function renderSteps(steps){stepsEl.innerHTML="";if(!steps||!steps.length){stepsEl.textContent="No steps recorded.";return;}for(const step of steps){const div=document.createElement("div");div.className="step";div.innerHTML=`<details><summary><span class="module-badge">${escHtml(step.module||"module")}</span><span>Step details</span></summary><strong>prompt</strong><pre class="json">${jsonHighlighted(step.prompt)}</pre><strong>response</strong><pre class="json">${jsonHighlighted(step.response)}</pre></details>`;stepsEl.appendChild(div);}}
+    function computeScale(item){const values=[];for(const point of item.neighbor_points||[])values.push(Number(point.value));if(item.owner_value!==null&&item.owner_value!==undefined)values.push(Number(item.owner_value));if(item.neighbor_avg!==null&&item.neighbor_avg!==undefined)values.push(Number(item.neighbor_avg));let min=Math.min(...values),max=Math.max(...values);if(!Number.isFinite(min)||!Number.isFinite(max)){min=0;max=1;}if(Math.abs(max-min)<1e-9){min-=1;max+=1;}return{min,max};}
+    function rankForValueDescending(value,points){const sorted=[...points].sort((a,b)=>(b.value-a.value)||((a.listing_name||"").localeCompare(b.listing_name||""))||a.listing_id.localeCompare(b.listing_id));const higherCount=sorted.filter((point)=>point.value>value).length;return higherCount+1;}
+    function compareOwnerToNeighbors(ownerValue,points){if(ownerValue===null||ownerValue===undefined)return{higherCount:null,tiedCount:null,lowerCount:null};const numericOwnerValue=Number(ownerValue),higherCount=points.filter((point)=>Number(point.value)>numericOwnerValue).length,tiedCount=points.filter((point)=>Math.abs(Number(point.value)-numericOwnerValue)<1e-9).length,lowerCount=points.filter((point)=>Number(point.value)<numericOwnerValue).length;return{higherCount,tiedCount,lowerCount};}
+    function buildNumericMetricCard(item){const scale=computeScale(item),leftPad=34,rightPad=620,axisY=70,offsets=[-18,-10,0,10,18,-14,14,-6,6,-22,22,-26,26],minIds=new Set((item.neighbor_min_points||[]).map((point)=>point.listing_id)),maxIds=new Set((item.neighbor_max_points||[]).map((point)=>point.listing_id));const xFor=(value)=>leftPad+(((Number(value)-scale.min)/(scale.max-scale.min))*(rightPad-leftPad));const pointNodes=(item.neighbor_points||[]).map((point,index)=>{const isExtreme=minIds.has(point.listing_id)||maxIds.has(point.listing_id),y=axisY+offsets[index%offsets.length];return `<circle class="chart-neighbor-point ${isExtreme?"is-extreme":""}" cx="${xFor(point.value)}" cy="${y}" r="${isExtreme?6:4.5}" data-selection-kind="numeric-point" data-column="${escHtml(item.column)}" data-point-role="neighbor" data-listing-id="${escHtml(point.listing_id)}"><title>${escHtml((point.listing_name||point.listing_id)+": "+formatNumber(point.value))}</title></circle>`;}).join("");const ownerX=item.owner_value!==null&&item.owner_value!==undefined?xFor(item.owner_value):null;const ownerNode=ownerX===null?"":`<polygon class="chart-owner-marker" points="${ownerX},34 ${ownerX+7},43 ${ownerX},52 ${ownerX-7},43" data-selection-kind="numeric-point" data-column="${escHtml(item.column)}" data-point-role="owner" data-listing-id="${escHtml(selectedPropertyProfile?.property_id||"")}"><title>Your property: ${escHtml(formatNumber(item.owner_value))}</title></polygon>`;const avgNode=item.neighbor_avg===null||item.neighbor_avg===undefined?"":`<line class="chart-avg-line" x1="${xFor(item.neighbor_avg)}" x2="${xFor(item.neighbor_avg)}" y1="20" y2="100" data-selection-kind="numeric-extreme" data-column="${escHtml(item.column)}" data-extreme-type="average"></line><text class="chart-avg-label" x="${xFor(item.neighbor_avg)}" y="16" text-anchor="middle" data-selection-kind="numeric-extreme" data-column="${escHtml(item.column)}" data-extreme-type="average">AVG</text>`;return `<article class="metric-card"><div class="metric-head"><div><h3>${escHtml(item.label)}</h3><div class="metric-subtitle">${escHtml(item.neighbor_count)} neighbors plotted</div></div><span class="metric-chip">You: ${escHtml(formatNumber(item.owner_value))}</span></div><svg class="numeric-chart" viewBox="0 0 640 120" role="img" aria-label="${escHtml(item.label)} distribution plot"><line class="chart-range" x1="${leftPad}" x2="${rightPad}" y1="${axisY}" y2="${axisY}"></line><line class="chart-axis" x1="${leftPad}" x2="${rightPad}" y1="${axisY}" y2="${axisY}"></line>${avgNode}${pointNodes}${ownerNode}<text class="chart-axis-label" x="${leftPad}" y="112" text-anchor="start">${escHtml(formatNumber(scale.min))}</text><text class="chart-axis-label" x="${rightPad}" y="112" text-anchor="end">${escHtml(formatNumber(scale.max))}</text></svg><div class="metric-legend"><span class="legend-pill owner">Owner marker</span><span class="legend-pill avg">Neighbor average</span><span class="legend-pill neighbor">Neighbor points</span></div><div class="metric-actions"><button type="button" class="metric-action" data-selection-kind="numeric-extreme" data-column="${escHtml(item.column)}" data-extreme-type="min">Min ${escHtml(formatNumber(item.neighbor_min))}</button><button type="button" class="metric-action" data-selection-kind="numeric-extreme" data-column="${escHtml(item.column)}" data-extreme-type="average">Avg ${escHtml(formatNumber(item.neighbor_avg))}</button><button type="button" class="metric-action" data-selection-kind="numeric-extreme" data-column="${escHtml(item.column)}" data-extreme-type="max">Max ${escHtml(formatNumber(item.neighbor_max))}</button></div></article>`;}
+    function renderNumeric(items){analysisState.numericByColumn=new Map((items||[]).map((item)=>[item.column,item]));if(!items||!items.length){numericWrapEl.innerHTML='<p class="empty-note">No numeric comparison data.</p>';return;}numericWrapEl.innerHTML=`<div class="metric-grid">${items.map(buildNumericMetricCard).join("")}</div>`;}
+    function buildCategoricalCard(item){const topBucketValue=item.buckets&&item.buckets.length?item.buckets[0].value:null;return `<article class="category-card"><h3>${escHtml(item.label)}</h3><p class="muted">Your value: <strong>${escHtml(item.owner_value||"n/a")}</strong></p><div class="bucket-list">${(item.buckets||[]).map((bucket)=>`<button type="button" class="bucket-button ${bucket.value===item.owner_value?"owner-bucket":""}" data-selection-kind="categorical-bucket" data-column="${escHtml(item.column)}" data-bucket-value="${escHtml(bucket.value)}"><span class="bucket-fill" style="width:${Math.max(bucket.pct,4)}%"></span><span class="bucket-content"><span class="bucket-label"><strong>${escHtml(bucket.value)}</strong><span>${bucket.value===item.owner_value?"Matches your property":(bucket.value===topBucketValue?"Most common among neighbors":"Neighbor segment")}</span></span><span class="bucket-meta">${escHtml(bucket.count)} (${escHtml(formatNumber(bucket.pct))}%)</span></span></button>`).join("")}</div></article>`;}
+    function renderCategorical(items){analysisState.categoricalByColumn=new Map((items||[]).map((item)=>[item.column,item]));if(!items||!items.length){categoricalWrapEl.innerHTML='<p class="empty-note">No categorical comparison data.</p>';return;}categoricalWrapEl.innerHTML=`<div class="category-grid">${items.map(buildCategoricalCard).join("")}</div>`;}
+    function buildNumericSelection(column,listingId,pointRole){const item=analysisState.numericByColumn.get(column);if(!item)return null;let listingName=selectedPropertyProfile?.property_name||"Your property",selectedValue=item.owner_value,listings=[],facts=[],requestPayload={metric_label:item.label,point_role:pointRole,owner_value:item.owner_value,neighbor_avg:item.neighbor_avg,neighbor_min:item.neighbor_min,neighbor_max:item.neighbor_max,neighbor_count:item.neighbor_count};if(pointRole==="neighbor"){const point=(item.neighbor_points||[]).find((entry)=>entry.listing_id===listingId);if(!point)return null;listingName=point.listing_name||point.listing_id;selectedValue=point.value;listings=[{id:point.listing_id,name:listingName,value:point.value}];const rank=selectedValue===null||selectedValue===undefined?null:rankForValueDescending(Number(selectedValue),item.neighbor_points||[]);facts=[{label:"Selected value",value:formatNumber(selectedValue)},{label:"Your value",value:formatNumber(item.owner_value)},{label:"Neighbor average",value:formatNumber(item.neighbor_avg)},{label:"Neighbor range",value:`${formatNumber(item.neighbor_min)} to ${formatNumber(item.neighbor_max)}`},{label:"Rank among neighbors",value:rank?`#${rank} of ${item.neighbor_count}`:"n/a"}];requestPayload={...requestPayload,listing_id:point.listing_id,listing_name:listingName,selected_value:selectedValue,rank};}else{listings=[{id:selectedPropertyProfile?.property_id||"owner",name:listingName,value:item.owner_value}];const comparison=compareOwnerToNeighbors(item.owner_value,item.neighbor_points||[]);facts=[{label:"Selected value",value:formatNumber(selectedValue)},{label:"Neighbor average",value:formatNumber(item.neighbor_avg)},{label:"Neighbor range",value:`${formatNumber(item.neighbor_min)} to ${formatNumber(item.neighbor_max)}`},{label:"Neighbors above you",value:comparison.higherCount===null?"n/a":String(comparison.higherCount)},{label:"Tied neighbors",value:comparison.tiedCount===null?"n/a":String(comparison.tiedCount)},{label:"Neighbors below you",value:comparison.lowerCount===null?"n/a":String(comparison.lowerCount)}];requestPayload={...requestPayload,listing_id:listings[0]?.id||null,listing_name:listings[0]?.name||null,selected_value:selectedValue,higher_count:comparison.higherCount,tied_count:comparison.tiedCount,lower_count:comparison.lowerCount};}return{badge:pointRole==="owner"?"Owner":"Neighbor",title:`${item.label}: ${listingName}`,subtitle:`Point selection for ${item.label}`,facts,listings,request:{selection_type:"numeric_point",metric_column:item.column,selection_payload:requestPayload}};}
+    function buildNumericExtremeSelection(column,extremeType){const item=analysisState.numericByColumn.get(column);if(!item)return null;let points=[],selectedValue=null;if(extremeType==="min"){points=item.neighbor_min_points||[];selectedValue=item.neighbor_min;}else if(extremeType==="max"){points=item.neighbor_max_points||[];selectedValue=item.neighbor_max;}else{selectedValue=item.neighbor_avg;}const listings=points.map((point)=>({id:point.listing_id,name:point.listing_name||point.listing_id,value:point.value}));return{badge:extremeType==="average"?"Average":extremeType.toUpperCase(),title:`${item.label}: ${extremeType==="average"?"Neighbor Average":`Neighbor ${extremeType}`}`,subtitle:"Distribution reference marker",facts:[{label:"Reference value",value:formatNumber(selectedValue)},{label:"Your value",value:formatNumber(item.owner_value)},{label:"Neighbor count",value:String(item.neighbor_count)},{label:"Neighbor range",value:`${formatNumber(item.neighbor_min)} to ${formatNumber(item.neighbor_max)}`},{label:"Tied listings",value:listings.length?String(listings.length):"n/a"}],listings,request:{selection_type:"numeric_extreme",metric_column:item.column,selection_payload:{metric_label:item.label,extreme_type:extremeType,selected_value:selectedValue,owner_value:item.owner_value,neighbor_avg:item.neighbor_avg,neighbor_min:item.neighbor_min,neighbor_max:item.neighbor_max,neighbor_count:item.neighbor_count,listing_ids:listings.map((listing)=>listing.id),listing_names:listings.map((listing)=>listing.name)}}};}
+    function buildCategoricalSelection(column,bucketValue){const item=analysisState.categoricalByColumn.get(column);if(!item)return null;const bucket=(item.buckets||[]).find((entry)=>entry.value===bucketValue);if(!bucket)return null;const topBucketValue=item.buckets&&item.buckets.length?item.buckets[0].value:null;const listings=(bucket.listing_ids||[]).map((listingId,index)=>({id:listingId,name:(bucket.listing_names||[])[index]||listingId}));return{badge:"Bucket",title:`${item.label}: ${bucket.value}`,subtitle:"Categorical bucket selection",facts:[{label:"Bucket size",value:`${bucket.count} neighbors`},{label:"Bucket share",value:`${formatNumber(bucket.pct)}%`},{label:"Your value",value:item.owner_value||"n/a"},{label:"Matches your property",value:bucket.value===item.owner_value?"Yes":"No"},{label:"Dominant bucket",value:bucket.value===topBucketValue?"Yes":`No, ${topBucketValue||"n/a"} leads`}],listings,request:{selection_type:"categorical_bucket",metric_column:item.column,selection_payload:{metric_label:item.label,bucket_value:bucket.value,bucket_count:bucket.count,bucket_pct:bucket.pct,owner_value:item.owner_value,neighbor_count:item.neighbor_count,dominant_bucket:topBucketValue,listing_ids:bucket.listing_ids||[],listing_names:bucket.listing_names||[]}}};}
+    function attachVisualizationEvents(){numericWrapEl.querySelectorAll("[data-selection-kind='numeric-point']").forEach((node)=>{node.addEventListener("click",()=>{const selection=buildNumericSelection(node.dataset.column,node.dataset.listingId,node.dataset.pointRole||"neighbor");if(selection)openSelection(selection);});});numericWrapEl.querySelectorAll("[data-selection-kind='numeric-extreme']").forEach((node)=>{node.addEventListener("click",()=>{const selection=buildNumericExtremeSelection(node.dataset.column,node.dataset.extremeType||"average");if(selection)openSelection(selection);});});categoricalWrapEl.querySelectorAll("[data-selection-kind='categorical-bucket']").forEach((node)=>{node.addEventListener("click",()=>{const selection=buildCategoricalSelection(node.dataset.column,node.dataset.bucketValue);if(selection)openSelection(selection);});});}
+    async function explainActiveSelection(){if(!analysisState.activeSelection||!selectedPropertyProfile||!selectedPropertyProfile.property_id)return;selectionExplainStatusEl.textContent="Explaining...";selectionExplanationEl.textContent="Working...";selectionExplanationEl.classList.remove("empty-note");explainSelectionBtn.disabled=true;try{const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";const res=await fetch("/api/analysis/explain-selection",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:selectedPropertyProfile.property_id,prompt:analysisState.latestPrompt,category:analysisState.analysisCategory,selection_type:analysisState.activeSelection.request.selection_type,metric_column:analysisState.activeSelection.request.metric_column,selection_payload:analysisState.activeSelection.request.selection_payload,llm_provider:provider})});const data=await res.json();if(data.status==="error"){selectionExplanationEl.textContent=data.error||"Explanation failed.";selectionExplainStatusEl.textContent="Failed";}else{selectionExplanationEl.textContent=data.response||"No explanation returned.";selectionExplainStatusEl.textContent="Done";}}catch(err){selectionExplanationEl.textContent=String(err);selectionExplainStatusEl.textContent="Failed";}finally{explainSelectionBtn.disabled=false;}}
+    async function runAnalysis(){if(!selectedPropertyProfile||!selectedPropertyProfile.property_id){statusEl.textContent="No property selected.";return;}const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";const prompt=promptEl.value.trim();if(!prompt){statusEl.textContent="Please enter a prompt.";return;}try{localStorage.setItem(LLM_PROVIDER_STORAGE_KEY,provider);}catch(err){}runBtn.disabled=true;statusEl.innerHTML='<span class="inline-spinner" aria-hidden="true"></span> Running...';narrativeEl.textContent="Working...";numericWrapEl.innerHTML='<p class="empty-note">Loading...</p>';categoricalWrapEl.innerHTML='<p class="empty-note">Loading...</p>';stepsEl.innerHTML="";resetSelectionDrawer();try{const res=await fetch("/api/analysis",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:selectedPropertyProfile.property_id,prompt,llm_provider:provider})});const data=await res.json();if(data.status==="error"){narrativeEl.textContent=data.error||"Analysis failed.";numericWrapEl.innerHTML='<p class="empty-note">No numeric comparison data.</p>';categoricalWrapEl.innerHTML='<p class="empty-note">No categorical comparison data.</p>';}else{analysisState.latestPrompt=prompt;analysisState.analysisCategory=data.analysis_category||null;narrativeEl.textContent=data.response||"No narrative returned.";renderNumeric(data.numeric_comparison||[]);renderCategorical(data.categorical_comparison||[]);attachVisualizationEvents();}renderSteps(data.steps||[]);statusEl.textContent=`Done (${data.status})`;}catch(err){narrativeEl.textContent=String(err);numericWrapEl.innerHTML='<p class="empty-note">No numeric comparison data.</p>';categoricalWrapEl.innerHTML='<p class="empty-note">No categorical comparison data.</p>';statusEl.textContent="Failed";}finally{runBtn.disabled=false;}}
+    propertyProfileEl.addEventListener("change",()=>{setSelectedPropertyProfile(propertyProfileEl.value);});runBtn.addEventListener("click",runAnalysis);promptEl.addEventListener("keydown",(event)=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){event.preventDefault();runAnalysis();}});explainSelectionBtn.addEventListener("click",explainActiveSelection);resetSelectionDrawer();loadPropertyProfiles();
   </script>
 </body>
 </html>

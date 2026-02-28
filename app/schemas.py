@@ -150,15 +150,27 @@ class AnalysisRequest(BaseModel):
     )
 
 
+class AnalysisNeighborPoint(BaseModel):
+    """One neighbor listing point used by numeric distribution charts."""
+
+    listing_id: str
+    listing_name: str | None
+    value: float
+
+
 class AnalysisNumericItem(BaseModel):
     """One numeric comparison row for owner vs. neighbors."""
 
+    label: str
     column: str
     owner_value: float | int | None
     neighbor_avg: float | None
     neighbor_min: float | None
     neighbor_max: float | None
     neighbor_count: int
+    neighbor_points: list[AnalysisNeighborPoint]
+    neighbor_min_points: list[AnalysisNeighborPoint]
+    neighbor_max_points: list[AnalysisNeighborPoint]
 
 
 class AnalysisCategoryBucket(BaseModel):
@@ -167,11 +179,14 @@ class AnalysisCategoryBucket(BaseModel):
     value: str
     count: int
     pct: float
+    listing_ids: list[str]
+    listing_names: list[str]
 
 
 class AnalysisCategoricalItem(BaseModel):
     """One categorical comparison item for owner vs. neighbor distribution."""
 
+    label: str
     column: str
     owner_value: str | None
     neighbor_count: int
@@ -184,8 +199,36 @@ class AnalysisResponse(BaseModel):
     status: Literal["ok", "error"]
     error: str | None
     response: str | None
+    analysis_category: Literal["review_scores", "property_specs"] | None = None
     numeric_comparison: list[AnalysisNumericItem]
     categorical_comparison: list[AnalysisCategoricalItem]
+    steps: list[StepLog]
+
+
+class AnalysisExplainSelectionRequest(BaseModel):
+    """Request payload for explaining one selected visualization item."""
+
+    property_id: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    category: Literal["review_scores", "property_specs"]
+    selection_type: Literal["numeric_point", "numeric_extreme", "categorical_bucket"]
+    metric_column: str = Field(min_length=1)
+    selection_payload: dict[str, Any]
+    llm_provider: Literal["default", "llmod", "openrouter"] | None = Field(
+        default=None,
+        description=(
+            "Optional chat provider override for this selection explanation request. "
+            "Use 'default' or omit to use deployment default."
+        ),
+    )
+
+
+class AnalysisExplainSelectionResponse(BaseModel):
+    """Response payload for selection-specific analyst explanations."""
+
+    status: Literal["ok", "error"]
+    error: str | None
+    response: str | None
     steps: list[StepLog]
 
 
