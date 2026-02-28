@@ -22,54 +22,107 @@
       background: #fff;
       color: var(--ink);
     }
-    .toggle-group { display:flex; gap:10px; flex-wrap:wrap; }
-    .toggle-btn {
-      background:#eef4f7;
-      color:var(--ink);
-      border:1px solid var(--border);
-      border-radius:999px;
-      padding:8px 14px;
-      cursor:pointer;
-      font-weight:600;
-    }
-    .toggle-btn.active {
-      background:linear-gradient(90deg,var(--accent),var(--accent2));
-      color:#fff;
-      border-color:transparent;
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      align-items: center;
     }
     .comparison-table {
-      width:100%;
-      border-collapse:collapse;
-      font-size:0.95rem;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
     }
     .comparison-table th,
     .comparison-table td {
-      border-bottom:1px solid var(--border);
-      padding:10px 12px;
-      text-align:left;
-      vertical-align:top;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
     }
     .comparison-table th {
-      color:var(--muted);
-      font-size:0.82rem;
-      text-transform:uppercase;
-      letter-spacing:0.04em;
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
-    .category-grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+    .category-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
     .category-card {
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:14px;
-      background:#fbfdff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fbfdff;
     }
-    .category-card h3 { margin:0 0 8px; font-size:1rem; }
-    .bucket-list { display:grid; gap:6px; }
-    .bucket-row { display:flex; justify-content:space-between; gap:10px; color:var(--muted); }
+    .category-card h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+    .bucket-list {
+      display: grid;
+      gap: 6px;
+    }
+    .bucket-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+    }
     .narrative {
-      white-space:pre-wrap;
-      line-height:1.6;
+      white-space: pre-wrap;
+      line-height: 1.6;
     }
-    .empty-note { color:var(--muted); }
+    .steps {
+      display: grid;
+      gap: 10px;
+    }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fcfeff;
+      overflow: hidden;
+    }
+    .step details {
+      padding: 8px 10px;
+    }
+    .step summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+    .step summary::-webkit-details-marker {
+      display: none;
+    }
+    .module-badge {
+      font-size: 0.8rem;
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    pre {
+      background: #f8fbfe;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      margin: 6px 0 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .json .k { color: #0f766e; }
+    .json .s { color: #1e40af; }
+    .json .n { color: #92400e; }
+    .json .b { color: #6d28d9; }
+    .json .nl { color: #9f1239; }
+    .empty-note { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -87,7 +140,7 @@
 
     <section class="card">
       <label for="prompt"><strong>Prompt</strong></label>
-      <textarea id="prompt" aria-label="Analysis prompt" placeholder="Example: How do my review scores compare to nearby competitors, and where am I lagging most?"></textarea>
+      <textarea id="prompt" aria-label="Analysis prompt" placeholder="Example: How are my review scores compared to my neighbors?"></textarea>
       <div class="row">
         <label for="propertyProfile" class="muted">Property</label>
         <select id="propertyProfile" aria-label="Property profile">
@@ -99,10 +152,6 @@
           <option value="llmod">LLMOD</option>
           <option value="openrouter">OpenRouter</option>
         </select>
-        <div class="toggle-group" aria-label="Analysis category">
-          <button type="button" class="toggle-btn active" data-category="review_scores">Review Scores</button>
-          <button type="button" class="toggle-btn" data-category="property_specs">Property Specs + Host</button>
-        </div>
         <button id="runBtn">Run Analysis</button>
         <span id="status" class="muted">Idle</span>
       </div>
@@ -142,10 +191,8 @@
     const LLM_PROVIDER_STORAGE_KEY = "analysis_console_llm_provider";
     const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
     const allowedProviders = new Set(["default", "llmod", "openrouter"]);
-    const categoryButtons = Array.from(document.querySelectorAll(".toggle-btn"));
     let propertyProfilesById = new Map();
     let selectedPropertyProfile = null;
-    let selectedCategory = "review_scores";
 
     try {
       const storedProvider = localStorage.getItem(LLM_PROVIDER_STORAGE_KEY);
@@ -154,13 +201,6 @@
       }
     } catch (err) {
       // Ignore storage errors.
-    }
-
-    function defaultPromptForCategory(category) {
-      if (category === "property_specs") {
-        return "How do my property specs and host positioning compare to nearby competitors?";
-      }
-      return "How do my review scores compare to nearby competitors, and where am I lagging most?";
     }
 
     function escHtml(str) {
@@ -329,13 +369,20 @@
         statusEl.textContent = "No property selected.";
         return;
       }
+
       const provider = allowedProviders.has(providerEl.value) ? providerEl.value : "default";
       const prompt = promptEl.value.trim();
+      if (!prompt) {
+        statusEl.textContent = "Please enter a prompt.";
+        return;
+      }
+
       try {
         localStorage.setItem(LLM_PROVIDER_STORAGE_KEY, provider);
       } catch (err) {
         // Ignore storage errors.
       }
+
       runBtn.disabled = true;
       statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Running...';
       narrativeEl.textContent = "Working...";
@@ -344,19 +391,14 @@
       stepsEl.innerHTML = "";
 
       try {
-        const requestPayload = {
-          property_id: selectedPropertyProfile.property_id,
-          llm_provider: provider,
-        };
-        if (prompt) {
-          requestPayload.prompt = prompt;
-        } else {
-          requestPayload.category = selectedCategory;
-        }
         const res = await fetch("/api/analysis", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(requestPayload),
+          body: JSON.stringify({
+            property_id: selectedPropertyProfile.property_id,
+            prompt,
+            llm_provider: provider,
+          }),
         });
         const data = await res.json();
         if (data.status === "error") {
@@ -380,16 +422,6 @@
       }
     }
 
-    categoryButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        selectedCategory = btn.dataset.category || "review_scores";
-        categoryButtons.forEach((other) => other.classList.toggle("active", other === btn));
-        if (!promptEl.value.trim()) {
-          promptEl.placeholder = `Example: ${defaultPromptForCategory(selectedCategory)}`;
-        }
-      });
-    });
-
     propertyProfileEl.addEventListener("change", () => {
       setSelectedPropertyProfile(propertyProfileEl.value);
     });
@@ -402,7 +434,6 @@
     });
 
     loadPropertyProfiles();
-    promptEl.placeholder = `Example: ${defaultPromptForCategory(selectedCategory)}`;
   </script>
 </body>
 </html>

@@ -254,19 +254,19 @@ class AnalystAgent(Agent):
             return explicit  # type: ignore[return-value]
 
         lowered = prompt.lower()
-        review_markers = {
-            "review score",
-            "review scores",
-            "rating",
-            "cleanliness",
-            "checkin",
-            "check-in",
-            "communication",
-            "location",
-            "value",
-            "accuracy",
-        }
-        if any(marker in lowered for marker in review_markers):
+        review_patterns = [
+            r"\breview(?:s)?\s+score(?:s)?\b",
+            r"\breview(?:s)?\s+rating(?:s)?\b",
+            r"\bguest\s+review(?:s)?\b",
+            r"\brating(?:s)?\b",
+            r"\bcleanliness\b",
+            r"\bcheck[\s-]?in\b",
+            r"\bcommunication\b",
+            r"\baccuracy\b",
+            r"\blocation\s+(?:score|rating)\b",
+            r"\bvalue\s+(?:score|rating)\b",
+        ]
+        if any(re.search(pattern, lowered) for pattern in review_patterns):
             return "review_scores"
         return "property_specs"
 

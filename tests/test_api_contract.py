@@ -410,6 +410,19 @@ def test_analyst_agent_review_scores_returns_full_trace() -> None:
     assert "analyst_agent.answer_generation" in module_names
 
 
+def test_analyst_agent_infers_review_scores_from_reviews_score_wording() -> None:
+    agent = _make_analyst_agent()
+    outcome = agent.analyze(
+        "How are my reviews score compared to my neighbors?",
+        context={"property_id": "42409434"},
+    )
+
+    data_fetch_step = next(step for step in outcome.steps if step.module == "analyst_agent.data_fetch")
+    assert data_fetch_step.prompt["category"] == "review_scores"
+    assert len(outcome.numeric_comparison) == 7
+    assert len(outcome.categorical_comparison) == 0
+
+
 def test_analyst_agent_without_chat_uses_fallback_summary() -> None:
     agent = _make_analyst_agent(chat_available=False)
     result = agent.run(
