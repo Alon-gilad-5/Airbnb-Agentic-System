@@ -132,8 +132,22 @@ class PropertyProfilesResponse(BaseModel):
 class AnalysisRequest(BaseModel):
     """Request payload for structured competitive analysis runs."""
 
+    prompt: str | None = Field(
+        default=None,
+        description="Optional freeform analyst prompt",
+    )
+    llm_provider: Literal["default", "llmod", "openrouter"] | None = Field(
+        default=None,
+        description=(
+            "Optional chat provider override for this analysis request. "
+            "Use 'default' or omit to use deployment default."
+        ),
+    )
     property_id: str | None = None
-    category: Literal["review_scores", "property_specs"] = "review_scores"
+    category: Literal["review_scores", "property_specs"] | None = Field(
+        default=None,
+        description="Optional category shortcut or explicit override",
+    )
 
 
 class AnalysisNumericItem(BaseModel):

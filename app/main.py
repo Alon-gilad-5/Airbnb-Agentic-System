@@ -1107,21 +1107,55 @@ def market_watch_run(
 
 @app.post("/api/analysis", response_model=AnalysisResponse)
 def run_analysis(payload: AnalysisRequest) -> AnalysisResponse:
-    """Run structured neighbor benchmarking analysis for one property."""
+    """Run prompt-driven neighbor benchmarking analysis for one property."""
+
+    requested_provider = (payload.llm_provider or "default").strip().lower()
+    provider_is_explicit = requested_provider in VALID_CHAT_PROVIDERS
+    resolved_provider = (
+        default_chat_provider
+        if requested_provider in {"", "default"}
+        else requested_provider
+    )
+    if resolved_provider not in VALID_CHAT_PROVIDERS:
+        resolved_provider = default_chat_provider
+
+    provider_chat_service = chat_services_by_provider.get(resolved_provider)
+    if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+        return AnalysisResponse(
+            status="error",
+            error=(
+                f"Requested llm_provider '{resolved_provider}' is not configured. "
+                f"Set required provider env vars and retry."
+            ),
+            response=None,
+            numeric_comparison=[],
+            categorical_comparison=[],
+            steps=[],
+        )
+
+    target_agent = analysis_agents_by_provider.get(resolved_provider)
+    if target_agent is None:
+        target_agent = analysis_agents_by_provider.get(default_chat_provider)
+    if target_agent is None:
+        target_agent = analyst_agent
 
     property_id = (
         payload.property_id.strip()
         if payload.property_id and payload.property_id.strip()
         else settings.active_owner.property_id
     )
-    context: dict[str, object] = {
-        "property_id": property_id,
-        "analysis_category": payload.category,
-    }
-    prompt = f"Analyze my {payload.category} against neighbors."
+    context: dict[str, object] = {"property_id": property_id}
+    if payload.category in {"review_scores", "property_specs"}:
+        context["analysis_category"] = payload.category
+
+    prompt = (
+        payload.prompt.strip()
+        if payload.prompt and payload.prompt.strip()
+        else f"Analyze my {payload.category or 'review_scores'} against neighbors."
+    )
 
     try:
-        outcome = analyst_agent.analyze(prompt, context=context)
+        outcome = target_agent.analyze(prompt, context=context)
         return AnalysisResponse(
             status=("error" if outcome.error else "ok"),
             error=outcome.error,

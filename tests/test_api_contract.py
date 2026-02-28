@@ -16,7 +16,7 @@ from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.analyst_agent import AnalystAgent
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.router_agent import RouterAgent
-from app.schemas import ExecuteRequest
+from app.schemas import AnalysisRequest, ExecuteRequest
 from app.services.pinecone_retriever import RetrievedReview
 from app.services.web_review_ingest import WebIngestResult
 from app.services.web_review_scraper import ScrapedReview
@@ -185,6 +185,15 @@ def test_execute_request_without_provider_is_valid() -> None:
 
 def test_execute_request_with_openrouter_provider_is_valid() -> None:
     payload = ExecuteRequest(prompt="What do guests say about wifi?", llm_provider="openrouter")
+    assert payload.llm_provider == "openrouter"
+
+
+def test_analysis_request_with_openrouter_provider_is_valid() -> None:
+    payload = AnalysisRequest(
+        prompt="How do I compare to nearby competitors on cleanliness?",
+        llm_provider="openrouter",
+    )
+    assert payload.prompt == "How do I compare to nearby competitors on cleanliness?"
     assert payload.llm_provider == "openrouter"
 
 

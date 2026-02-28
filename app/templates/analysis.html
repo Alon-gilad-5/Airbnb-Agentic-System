@@ -5,6 +5,23 @@
   <title>Analysis Console</title>
   <link rel="stylesheet" href="/static/base.css">
   <style>
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      font: inherit;
+      resize: vertical;
+    }
+    select {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+      color: var(--ink);
+    }
     .toggle-group { display:flex; gap:10px; flex-wrap:wrap; }
     .toggle-btn {
       background:#eef4f7;
@@ -65,14 +82,22 @@
         <a href="/analysis" class="active" aria-current="page">Analysis</a>
       </div>
       <h1>Analysis Console</h1>
-      <p>Benchmark your property against nearby neighbors using structured listing data.</p>
+      <p>Ask the analyst how your property compares to nearby neighbors and inspect the structured benchmark data underneath.</p>
     </section>
 
     <section class="card">
+      <label for="prompt"><strong>Prompt</strong></label>
+      <textarea id="prompt" aria-label="Analysis prompt" placeholder="Example: How do my review scores compare to nearby competitors, and where am I lagging most?"></textarea>
       <div class="row">
         <label for="propertyProfile" class="muted">Property</label>
         <select id="propertyProfile" aria-label="Property profile">
           <option value="primary">Primary</option>
+        </select>
+        <label for="llmProvider" class="muted">Provider</label>
+        <select id="llmProvider" aria-label="LLM provider">
+          <option value="default">Default</option>
+          <option value="llmod">LLMOD</option>
+          <option value="openrouter">OpenRouter</option>
         </select>
         <div class="toggle-group" aria-label="Analysis category">
           <button type="button" class="toggle-btn active" data-category="review_scores">Review Scores</button>
@@ -105,18 +130,38 @@
   </main>
 
   <script>
+    const promptEl = document.getElementById("prompt");
     const propertyProfileEl = document.getElementById("propertyProfile");
+    const providerEl = document.getElementById("llmProvider");
     const runBtn = document.getElementById("runBtn");
     const statusEl = document.getElementById("status");
     const narrativeEl = document.getElementById("narrative");
     const numericWrapEl = document.getElementById("numericWrap");
     const categoricalWrapEl = document.getElementById("categoricalWrap");
     const stepsEl = document.getElementById("steps");
+    const LLM_PROVIDER_STORAGE_KEY = "analysis_console_llm_provider";
     const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
+    const allowedProviders = new Set(["default", "llmod", "openrouter"]);
     const categoryButtons = Array.from(document.querySelectorAll(".toggle-btn"));
     let propertyProfilesById = new Map();
     let selectedPropertyProfile = null;
     let selectedCategory = "review_scores";
+
+    try {
+      const storedProvider = localStorage.getItem(LLM_PROVIDER_STORAGE_KEY);
+      if (storedProvider && allowedProviders.has(storedProvider)) {
+        providerEl.value = storedProvider;
+      }
+    } catch (err) {
+      // Ignore storage errors.
+    }
+
+    function defaultPromptForCategory(category) {
+      if (category === "property_specs") {
+        return "How do my property specs and host positioning compare to nearby competitors?";
+      }
+      return "How do my review scores compare to nearby competitors, and where am I lagging most?";
+    }
 
     function escHtml(str) {
       const d = document.createElement("div");
@@ -284,6 +329,13 @@
         statusEl.textContent = "No property selected.";
         return;
       }
+      const provider = allowedProviders.has(providerEl.value) ? providerEl.value : "default";
+      const prompt = promptEl.value.trim();
+      try {
+        localStorage.setItem(LLM_PROVIDER_STORAGE_KEY, provider);
+      } catch (err) {
+        // Ignore storage errors.
+      }
       runBtn.disabled = true;
       statusEl.innerHTML = '<span class="inline-spinner" aria-hidden="true"></span> Running...';
       narrativeEl.textContent = "Working...";
@@ -292,13 +344,19 @@
       stepsEl.innerHTML = "";
 
       try {
+        const requestPayload = {
+          property_id: selectedPropertyProfile.property_id,
+          llm_provider: provider,
+        };
+        if (prompt) {
+          requestPayload.prompt = prompt;
+        } else {
+          requestPayload.category = selectedCategory;
+        }
         const res = await fetch("/api/analysis", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            property_id: selectedPropertyProfile.property_id,
-            category: selectedCategory,
-          }),
+          body: JSON.stringify(requestPayload),
         });
         const data = await res.json();
         if (data.status === "error") {
@@ -326,6 +384,9 @@
       btn.addEventListener("click", () => {
         selectedCategory = btn.dataset.category || "review_scores";
         categoryButtons.forEach((other) => other.classList.toggle("active", other === btn));
+        if (!promptEl.value.trim()) {
+          promptEl.placeholder = `Example: ${defaultPromptForCategory(selectedCategory)}`;
+        }
       });
     });
 
@@ -333,8 +394,15 @@
       setSelectedPropertyProfile(propertyProfileEl.value);
     });
     runBtn.addEventListener("click", runAnalysis);
+    promptEl.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        runAnalysis();
+      }
+    });
 
     loadPropertyProfiles();
+    promptEl.placeholder = `Example: ${defaultPromptForCategory(selectedCategory)}`;
   </script>
 </body>
 </html>
