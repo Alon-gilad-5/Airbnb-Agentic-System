@@ -163,6 +163,34 @@ def test_pricing_strong_review_base_softens_lower_without_reversing_it() -> None
     assert outcome.recommendation.price_change_pct < 0.0
 
 
+def test_pricing_hold_reason_explains_strong_demand_quality_conflict() -> None:
+    agent = _make_agent(
+        [
+            _row(listing_id="owner", price="$80.00", rating=4.40, total_reviews=3151, recent_reviews=9),
+            _row(listing_id="n1", price="$100.00", rating=4.58, total_reviews=45, recent_reviews=1),
+            _row(listing_id="n2", price="$110.00", rating=4.56, total_reviews=55, recent_reviews=1),
+            _row(listing_id="n3", price="$114.00", rating=4.55, total_reviews=60, recent_reviews=1),
+            _row(listing_id="n4", price="$102.00", rating=4.57, total_reviews=58, recent_reviews=1),
+            _row(listing_id="n5", price="$105.00", rating=4.55, total_reviews=57, recent_reviews=1),
+        ],
+        events=[SimpleNamespace(popularity_hint="high") for _ in range(4)],
+    )
+
+    outcome = agent.recommend(
+        "What should I charge next week?",
+        context={"property_id": "owner", "latitude": 1, "longitude": 1},
+    )
+
+    assert outcome.recommendation is not None
+    assert outcome.recommendation.price_action == "hold"
+    assert outcome.recommendation.confidence == "medium"
+    assert "priced below nearby comps" in outcome.recommendation.primary_reason.lower()
+    assert "review quality is still slightly below the market baseline" in outcome.recommendation.primary_reason.lower()
+    assert outcome.recommendation.risk_note is not None
+    assert "demand and quality signals conflict" in outcome.recommendation.risk_note.lower()
+    assert "market signals are mixed" not in outcome.narrative.lower()
+
+
 def test_pricing_request_validation_accepts_horizon_and_mode() -> None:
     payload = PricingRequest(property_id="owner", horizon_days=7, price_mode="conservative", llm_provider="openrouter")
     assert payload.horizon_days == 7

@@ -258,6 +258,7 @@ class PricingAgent(Agent):
 
         risk_note = self._build_risk_note(
             price_stats=price_stats,
+            quality_stats=quality_stats,
             market_stats=market_stats,
             review_volume_stats=review_volume_stats,
             confidence=confidence,
@@ -625,6 +626,12 @@ class PricingAgent(Agent):
             or ((review_volume_stats["recent_review_momentum"] or 0.0) <= 0 and review_strength != "above_market")
         ):
             level -= 1
+        if self._has_hold_conflict(
+            price_gap_pct=price_stats["price_gap_pct"],
+            quality_gap=quality_gap,
+            market_pressure=market_stats["market_pressure"],
+        ):
+            level -= 1
         level = max(0, min(level, 2))
         return _classify_confidence(level)
 
@@ -725,6 +732,20 @@ class PricingAgent(Agent):
             return -0.5
         return 0.0
 
+    def _has_hold_conflict(
+        self,
+        *,
+        price_gap_pct: float | None,
+        quality_gap: float,
+        market_pressure: Literal["soft", "neutral", "strong"],
+    ) -> bool:
+        return (
+            market_pressure == "strong"
+            and price_gap_pct is not None
+            and price_gap_pct <= -3.0
+            and quality_gap <= -0.05
+        )
+
     def _build_primary_reason(
         self,
         price_action: Literal["raise", "hold", "lower", "unknown"],
@@ -760,13 +781,25 @@ class PricingAgent(Agent):
                 parts.append("Strong review depth softens the size of the reduction.")
             return " ".join(parts) or "The comp set does not support a higher rate right now."
         if price_action == "hold":
-            return "The market signals are mixed, so the safest recommendation is to hold the current rate."
+            if self._has_hold_conflict(
+                price_gap_pct=price_gap,
+                quality_gap=quality_gap,
+                market_pressure=market_stats["market_pressure"],
+            ):
+                return (
+                    "Demand is supportive and you are priced below nearby comps, "
+                    "but review quality is still slightly below the market baseline, so the safest call is to hold."
+                )
+            if market_stats["market_pressure"] == "soft" and price_gap is not None and price_gap >= 0:
+                return "Soft demand does not support pushing above the current rate, so the safest recommendation is to hold."
+            return "The market signals are balanced enough that the safest recommendation is to hold the current rate."
         return "Current price data is incomplete, so this is a directional benchmark rather than a firm recommendation."
 
     def _build_risk_note(
         self,
         *,
         price_stats: dict[str, Any],
+        quality_stats: dict[str, Any],
         market_stats: dict[str, Any],
         review_volume_stats: dict[str, Any],
         confidence: Literal["low", "medium", "high"],
@@ -780,6 +813,12 @@ class PricingAgent(Agent):
             notes.append("Market-signal coverage is incomplete for this run.")
         if review_volume_stats["review_volume_strength"] == "below_market":
             notes.append("Your rating edge is supported by a thinner review base than nearby comps.")
+        if self._has_hold_conflict(
+            price_gap_pct=price_stats["price_gap_pct"],
+            quality_gap=quality_stats["review_score_gap"] or 0.0,
+            market_pressure=market_stats["market_pressure"],
+        ):
+            notes.append("Demand and quality signals conflict, which limits confidence in a price increase.")
         return " ".join(notes[:2]) or None
 
     def _build_narrative(
@@ -805,7 +844,8 @@ class PricingAgent(Agent):
         )
         user_prompt = (
             f"User request: {prompt}\n\nComputed pricing summary:\n{compact_summary}\n\n"
-            "Return at most 2 short paragraphs. Mention review volume only if it materially changes confidence or magnitude."
+            "Return at most 2 short paragraphs. Mention review volume only if it materially changes confidence or magnitude. "
+            "Keep the explanation consistent with market_pressure and do not quote raw demand-signal counts."
         )
         try:
             text = self._chat.generate(system_prompt=system_prompt, user_prompt=user_prompt)
@@ -831,6 +871,13 @@ class PricingAgent(Agent):
         recommendation: PricingRecommendation,
         signals: PricingSignalSummary,
     ) -> str:
+        demand_support = (
+            "strong"
+            if signals.market_pressure == "strong"
+            else "soft"
+            if signals.market_pressure == "soft"
+            else "neutral"
+        )
         lines = [
             f"Current price: {recommendation.current_price}",
             f"Recommended price: {recommendation.recommended_price}",
@@ -846,7 +893,7 @@ class PricingAgent(Agent):
             f"Neighbor avg total reviews: {signals.neighbor_avg_number_of_reviews}",
             f"Owner recent reviews 30d: {signals.owner_recent_reviews_30d}",
             f"Market pressure: {signals.market_pressure}",
-            f"Demand signal count: {signals.demand_signal_count}",
+            f"Demand support: {demand_support}",
         ]
         return "\n".join(lines)
 
