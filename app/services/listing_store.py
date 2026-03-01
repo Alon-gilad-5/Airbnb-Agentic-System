@@ -15,6 +15,13 @@ REVIEW_SCORE_COLUMNS = [
     "review_scores_value",
 ]
 
+REVIEW_VOLUME_COLUMNS = [
+    "number_of_reviews",
+    "number_of_reviews_ltm",
+    "number_of_reviews_l30d",
+    "reviews_per_month",
+]
+
 PROPERTY_SPEC_NUMERIC_COLUMNS = [
     "accommodates",
     "bathrooms",
@@ -33,7 +40,7 @@ PROPERTY_SPEC_COLUMNS = PROPERTY_SPEC_NUMERIC_COLUMNS + PROPERTY_SPEC_CATEGORICA
 
 BASE_COLUMNS = ["id", "name"]
 
-ALLOWED_COLUMNS = set(BASE_COLUMNS + REVIEW_SCORE_COLUMNS + PROPERTY_SPEC_COLUMNS)
+ALLOWED_COLUMNS = set(BASE_COLUMNS + REVIEW_SCORE_COLUMNS + REVIEW_VOLUME_COLUMNS + PROPERTY_SPEC_COLUMNS)
 
 
 class ListingStore:

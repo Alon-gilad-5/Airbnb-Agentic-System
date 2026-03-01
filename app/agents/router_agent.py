@@ -58,11 +58,27 @@ class RouterAgent:
         "compare my review scores",
         "how do i compare to neighbors",
         "how do i benchmark",
+        "how do my prices compare",
+        "compare my price",
+        "compare my prices",
+        "price compare",
+    }
+    _pricing_keywords = {
+        "pricing",
+        "price",
+        "rate",
+        "nightly rate",
+        "raise price",
+        "lower price",
+        "what should i charge",
+        "how much should i charge",
+        "should i raise prices",
+        "should i lower prices",
     }
     _market_watch_keywords = {
         "market", "intel", "weather", "forecast", "storm", "snow",
         "rain", "event", "events", "concert", "conference", "festival",
-        "demand", "pricing", "price", "holiday", "nearby",
+        "demand", "holiday", "nearby",
     }
 
     def __init__(self) -> None:
@@ -76,6 +92,16 @@ class RouterAgent:
             decision = RouteDecision(
                 agent_name="mail_agent",
                 reason="Matched mail/inbox intent keywords.",
+            )
+        elif self._is_analyst_price_comparison(lowered):
+            decision = RouteDecision(
+                agent_name="analyst_agent",
+                reason="Matched analyst price-comparison intent keywords.",
+            )
+        elif any(keyword in lowered for keyword in self._pricing_keywords):
+            decision = RouteDecision(
+                agent_name="pricing_agent",
+                reason="Matched pricing recommendation intent keywords.",
             )
         elif any(keyword in lowered for keyword in self._market_watch_keywords):
             decision = RouteDecision(
@@ -104,6 +130,16 @@ class RouterAgent:
             response={"selected_agent": decision.agent_name, "reason": decision.reason},
         )
         return decision, step
+
+    def _is_analyst_price_comparison(self, lowered_prompt: str) -> bool:
+        comparison_markers = ("compare", "benchmark", "how do i compare")
+        price_markers = ("price", "prices", "rate", "rates")
+        neighbor_markers = ("neighbor", "neighbors", "nearby", "competitor", "competitors", "comps")
+        return (
+            any(marker in lowered_prompt for marker in comparison_markers)
+            and any(marker in lowered_prompt for marker in price_markers)
+            and any(marker in lowered_prompt for marker in neighbor_markers)
+        )
 
     def _build_graph(self) -> Any:
         """Build a single-node LangGraph wrapper around keyword routing."""

@@ -70,16 +70,26 @@ def _patch_provider_state(monkeypatch, *, openrouter_available: bool = True) -> 
     )
     monkeypatch.setattr(
         main_module,
+        "pricing_agents_by_provider",
+        {
+            "llmod": _DummyAgent("pricing:llmod"),
+            "openrouter": _DummyAgent("pricing:openrouter"),
+        },
+    )
+    monkeypatch.setattr(
+        main_module,
         "agent_registry",
         {
             "reviews_agent": _DummyAgent("reviews:default"),
             "market_watch_agent": _DummyAgent("market_watch:deterministic"),
             "mail_agent": _DummyAgent("mail:default"),
             "analyst_agent": _DummyAgent("analysis:default"),
+            "pricing_agent": _DummyAgent("pricing:default"),
         },
     )
     monkeypatch.setattr(main_module.settings, "market_watch_enabled", True)
     monkeypatch.setattr(main_module.settings, "mail_enabled", True)
+    monkeypatch.setattr(main_module.settings, "pricing_enabled", True)
 
 
 def test_execute_uses_default_provider_when_no_override(monkeypatch) -> None:
@@ -139,3 +149,15 @@ def test_execute_uses_openrouter_when_analyst_override_is_explicit(monkeypatch) 
 
     assert result.status == "ok"
     assert result.response == "analysis:openrouter"
+
+
+def test_execute_uses_openrouter_when_pricing_override_is_explicit(monkeypatch) -> None:
+    _patch_provider_state(monkeypatch, openrouter_available=True)
+    _patch_router(monkeypatch, agent_name="pricing_agent")
+
+    result = main_module.execute(
+        ExecuteRequest(prompt="What should I charge next weekend?", llm_provider="openrouter")
+    )
+
+    assert result.status == "ok"
+    assert result.response == "pricing:openrouter"

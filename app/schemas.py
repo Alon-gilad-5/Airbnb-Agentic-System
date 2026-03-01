@@ -150,6 +150,66 @@ class AnalysisRequest(BaseModel):
     )
 
 
+class PricingRequest(BaseModel):
+    """Request payload for structured pricing recommendations."""
+
+    prompt: str | None = Field(default=None, description="Optional freeform pricing prompt")
+    property_id: str | None = Field(default=None, description="Target property identifier")
+    llm_provider: Literal["default", "llmod", "openrouter"] | None = Field(
+        default=None,
+        description=(
+            "Optional chat provider override for this pricing request. "
+            "Use 'default' or omit to use deployment default."
+        ),
+    )
+    horizon_days: int = Field(default=14, ge=1, le=30)
+    price_mode: Literal["recommended", "conservative", "aggressive"] = Field(default="recommended")
+
+
+class PricingRecommendation(BaseModel):
+    """Structured nightly-price recommendation."""
+
+    current_price: float | None
+    recommended_price: float | None
+    price_change_abs: float | None
+    price_change_pct: float | None
+    price_action: Literal["raise", "hold", "lower", "unknown"]
+    confidence: Literal["low", "medium", "high"]
+    primary_reason: str
+    risk_note: str | None
+
+
+class PricingSignalSummary(BaseModel):
+    """Compact signal summary returned by the pricing endpoint."""
+
+    neighbor_avg_price: float | None
+    neighbor_min_price: float | None
+    neighbor_max_price: float | None
+    price_position_pct: float | None
+    review_score_gap: float | None
+    strongest_review_metric: str | None
+    weakest_review_metric: str | None
+    demand_signal_count: int
+    high_severity_signal_count: int
+    market_pressure: Literal["soft", "neutral", "strong"]
+    owner_number_of_reviews: int | None
+    neighbor_avg_number_of_reviews: float | None
+    owner_recent_reviews_30d: int | None
+    neighbor_avg_recent_reviews_30d: float | None
+    review_volume_strength: Literal["below_market", "in_line", "above_market"] | None
+
+
+class PricingResponse(BaseModel):
+    """Response payload for pricing-agent runs."""
+
+    status: Literal["ok", "error"]
+    error: str | None
+    response: str | None
+    recommendation: PricingRecommendation | None
+    signals: PricingSignalSummary | None
+    steps: list[StepLog]
+
+
 class AnalysisNeighborPoint(BaseModel):
     """One neighbor listing point used by numeric distribution charts."""
 

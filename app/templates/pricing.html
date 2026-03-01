@@ -1,0 +1,164 @@
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pricing Console</title>
+  <link rel="stylesheet" href="/static/base.css">
+  <style>
+    textarea{width:100%;min-height:120px;border:1px solid var(--border);border-radius:10px;padding:10px;font:inherit;resize:vertical}
+    select,input[type="range"]{font:inherit}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+    .metric{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fbfdff}
+    .metric h3{margin:0 0 8px}
+    .hero{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .hero h2{margin:0}
+    .headline{font-size:1.2rem;font-weight:700;margin-top:8px}
+    .badge{display:inline-flex;border-radius:999px;padding:5px 10px;font-size:.82rem;font-weight:700}
+    .badge.low{background:#fee2e2;color:#b91c1c}.badge.medium{background:#fef3c7;color:#92400e}.badge.high{background:#dcfce7;color:#166534}
+    .steps{display:grid;gap:10px}
+    .step{border:1px solid var(--border);border-radius:10px;background:#fcfeff;overflow:hidden}
+    .step details{padding:8px 10px}
+    .step summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-weight:600}
+    .step summary::-webkit-details-marker{display:none}
+    .module-badge{font-size:.8rem;border-radius:999px;padding:2px 8px;background:#dbeafe;color:#1e40af}
+    pre{background:#f8fbfe;border:1px solid var(--border);border-radius:10px;padding:12px;overflow:auto;margin:6px 0 0;white-space:pre-wrap;word-break:break-word}
+    .nav a.active{background:rgba(31,95,139,.14)}
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <section class="card">
+      <div class="nav">
+        <a href="/">Reviews Console</a>
+        <a href="/mail">Mail Console</a>
+        <a href="/market-watch">Market Watch</a>
+        <a href="/analysis">Analysis</a>
+        <a href="/pricing" class="active" aria-current="page">Pricing</a>
+      </div>
+      <h1>Pricing Console</h1>
+      <p>Estimate a nightly rate using deterministic comp, market, and review-volume signals.</p>
+    </section>
+
+    <section class="card">
+      <label for="prompt"><strong>Prompt</strong></label>
+      <textarea id="prompt" aria-label="Pricing prompt" placeholder="Example: What should I charge next weekend?"></textarea>
+      <div class="row">
+        <label for="propertyProfile" class="muted">Property</label>
+        <select id="propertyProfile"><option value="primary">Primary</option></select>
+        <label for="llmProvider" class="muted">Provider</label>
+        <select id="llmProvider">
+          <option value="default">Default</option>
+          <option value="llmod">LLMOD</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+        <label for="priceMode" class="muted">Mode</label>
+        <select id="priceMode">
+          <option value="recommended">Recommended</option>
+          <option value="conservative">Conservative</option>
+          <option value="aggressive">Aggressive</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="horizonDays" class="muted">Horizon</label>
+        <input id="horizonDays" type="range" min="1" max="30" value="14">
+        <span id="horizonLabel" class="muted">14 days</span>
+        <button id="runBtn">Run Pricing</button>
+        <span id="status" class="muted">Idle</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="hero">
+        <div>
+          <h2>Answer</h2>
+          <div id="headline" class="headline">No run yet.</div>
+        </div>
+        <span id="confidenceBadge" class="badge medium" hidden>medium</span>
+      </div>
+      <p id="finalResponse" class="muted" style="margin-top:10px">Run the pricing agent to see the recommendation.</p>
+    </section>
+
+    <section class="grid">
+      <section class="metric">
+        <h3>Recommendation</h3>
+        <div id="recommendation">No recommendation yet.</div>
+      </section>
+      <section class="metric">
+        <h3>Signals</h3>
+        <div id="signals">No signal summary yet.</div>
+      </section>
+    </section>
+
+    <section class="card">
+      <details id="traceDetails">
+        <summary><strong>Technical Trace</strong></summary>
+        <div id="steps" class="steps" style="margin-top:10px"></div>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    const promptEl=document.getElementById("prompt"),propertyProfileEl=document.getElementById("propertyProfile"),providerEl=document.getElementById("llmProvider"),priceModeEl=document.getElementById("priceMode"),horizonEl=document.getElementById("horizonDays"),horizonLabelEl=document.getElementById("horizonLabel"),runBtn=document.getElementById("runBtn"),statusEl=document.getElementById("status");
+    const headlineEl=document.getElementById("headline"),confidenceBadgeEl=document.getElementById("confidenceBadge"),finalResponseEl=document.getElementById("finalResponse"),recommendationEl=document.getElementById("recommendation"),signalsEl=document.getElementById("signals"),stepsEl=document.getElementById("steps");
+    const allowedProviders=new Set(["default","llmod","openrouter"]); let propertyProfilesById=new Map(),selectedPropertyProfile=null;
+
+    function escHtml(value){const div=document.createElement("div");div.textContent=value==null?"":String(value);return div.innerHTML;}
+    function formatNumber(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);return Math.abs(num-Math.round(num))<1e-9?String(Math.round(num)):num.toFixed(2);}
+    function setSelectedPropertyProfile(profileId){selectedPropertyProfile=propertyProfilesById.get(profileId)||null;propertyProfileEl.value=profileId;}
+    function setConfidenceBadge(confidence){if(!confidence){confidenceBadgeEl.hidden=true;return;}confidenceBadgeEl.hidden=false;confidenceBadgeEl.className=`badge ${confidence}`;confidenceBadgeEl.textContent=confidence;}
+    function renderSteps(steps){stepsEl.innerHTML="";for(const step of (steps||[])){const card=document.createElement("div");card.className="step";card.innerHTML=`<details><summary><span class="module-badge">${escHtml(step.module||"module")}</span></summary><pre>${escHtml(JSON.stringify({prompt:step.prompt,response:step.response},null,2))}</pre></details>`;stepsEl.appendChild(card);}}
+
+    async function loadPropertyProfiles(){
+      propertyProfilesById=new Map();selectedPropertyProfile=null;
+      try{
+        const res=await fetch("/api/property_profiles"); const data=await res.json(); const profiles=Array.isArray(data.profiles)?data.profiles:[]; if(!profiles.length)return;
+        propertyProfileEl.innerHTML="";
+        for(const profile of profiles){propertyProfilesById.set(profile.profile_id,profile);const opt=document.createElement("option");opt.value=profile.profile_id;opt.textContent=profile.property_name||profile.property_id||profile.profile_id;propertyProfileEl.appendChild(opt);}
+        setSelectedPropertyProfile(typeof data.default_profile_id==="string"?data.default_profile_id:profiles[0].profile_id);
+      }catch(err){statusEl.textContent=String(err);}
+    }
+
+    async function runPricing(){
+      if(!selectedPropertyProfile||!selectedPropertyProfile.property_id){statusEl.textContent="No property selected.";return;}
+      runBtn.disabled=true;statusEl.textContent="Running...";
+      try{
+        const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";
+        const prompt=(promptEl.value||"").trim();
+        const res=await fetch("/api/pricing",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:prompt||null,property_id:selectedPropertyProfile.property_id,llm_provider:provider,horizon_days:Number(horizonEl.value),price_mode:priceModeEl.value})});
+        const data=await res.json();
+        if(data.status==="error"){
+          headlineEl.textContent="Pricing failed";
+          setConfidenceBadge(null);
+          finalResponseEl.textContent=data.error||"Pricing request failed.";
+          recommendationEl.textContent="No recommendation.";
+          signalsEl.textContent="No signals.";
+          renderSteps(data.steps||[]);
+          statusEl.textContent="Error";
+          return;
+        }
+        const rec=data.recommendation||{}, signals=data.signals||{};
+        headlineEl.textContent=`${String(rec.price_action||"hold").toUpperCase()} ${rec.price_change_pct==null?"":`${formatNumber(rec.price_change_pct)}%`}`;
+        setConfidenceBadge(rec.confidence||null);
+        finalResponseEl.textContent=data.response||"No response.";
+        recommendationEl.innerHTML=`<strong>Current:</strong> ${formatNumber(rec.current_price)}<br><strong>Recommended:</strong> ${formatNumber(rec.recommended_price)}<br><strong>Reason:</strong> ${escHtml(rec.primary_reason||"n/a")}<br><strong>Risk:</strong> ${escHtml(rec.risk_note||"n/a")}`;
+        signalsEl.innerHTML=`<strong>Neighbor avg:</strong> ${formatNumber(signals.neighbor_avg_price)}<br><strong>Range:</strong> ${formatNumber(signals.neighbor_min_price)} to ${formatNumber(signals.neighbor_max_price)}<br><strong>Review gap:</strong> ${formatNumber(signals.review_score_gap)}<br><strong>Total reviews:</strong> ${formatNumber(signals.owner_number_of_reviews)} vs ${formatNumber(signals.neighbor_avg_number_of_reviews)} avg<br><strong>Recent reviews 30d:</strong> ${formatNumber(signals.owner_recent_reviews_30d)} vs ${formatNumber(signals.neighbor_avg_recent_reviews_30d)} avg<br><strong>Review volume:</strong> ${escHtml(signals.review_volume_strength||"n/a")}<br><strong>Market pressure:</strong> ${escHtml(signals.market_pressure||"n/a")}`;
+        renderSteps(data.steps||[]);
+        statusEl.textContent="Done";
+      }catch(err){
+        headlineEl.textContent="Pricing failed";
+        finalResponseEl.textContent=String(err);
+        statusEl.textContent="Error";
+      }finally{
+        runBtn.disabled=false;
+      }
+    }
+
+    horizonEl.addEventListener("input",()=>{horizonLabelEl.textContent=`${horizonEl.value} days`;});
+    propertyProfileEl.addEventListener("change",()=>setSelectedPropertyProfile(propertyProfileEl.value));
+    runBtn.addEventListener("click",runPricing);
+    promptEl.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){event.preventDefault();runPricing();}});
+    loadPropertyProfiles();
+  </script>
+</body>
+</html>

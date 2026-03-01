@@ -16,7 +16,7 @@ from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.analyst_agent import AnalystAgent
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
 from app.agents.router_agent import RouterAgent
-from app.schemas import AnalysisExplainSelectionRequest, AnalysisRequest, ExecuteRequest
+from app.schemas import AnalysisExplainSelectionRequest, AnalysisRequest, ExecuteRequest, PricingRequest
 from app.services.pinecone_retriever import RetrievedReview
 from app.services.web_review_ingest import WebIngestResult
 from app.services.web_review_scraper import ScrapedReview
@@ -209,6 +209,19 @@ def test_analysis_explain_selection_request_is_valid() -> None:
     )
     assert payload.metric_column == "review_scores_rating"
     assert payload.llm_provider == "openrouter"
+
+
+def test_pricing_request_with_openrouter_provider_is_valid() -> None:
+    payload = PricingRequest(
+        prompt="What should I charge next weekend?",
+        property_id="42409434",
+        llm_provider="openrouter",
+        horizon_days=7,
+        price_mode="conservative",
+    )
+    assert payload.llm_provider == "openrouter"
+    assert payload.horizon_days == 7
+    assert payload.price_mode == "conservative"
 
 
 def test_execute_request_with_invalid_provider_fails_validation() -> None:
@@ -554,6 +567,20 @@ def test_router_market_keywords() -> None:
 def test_router_analyst_keywords() -> None:
     router = RouterAgent()
     decision, step = router.route("Can you benchmark my property specs?")
+    assert decision.agent_name == "analyst_agent"
+    assert step.module == "router_agent"
+
+
+def test_router_pricing_keywords() -> None:
+    router = RouterAgent()
+    decision, step = router.route("What should I charge next weekend?")
+    assert decision.agent_name == "pricing_agent"
+    assert step.module == "router_agent"
+
+
+def test_router_price_comparison_prefers_analyst() -> None:
+    router = RouterAgent()
+    decision, step = router.route("How do my prices compare to nearby competitors?")
     assert decision.agent_name == "analyst_agent"
     assert step.module == "router_agent"
 

@@ -22,7 +22,7 @@ def ensure_architecture_png(output_path: Path) -> None:
     # Always regenerate so diagram stays in sync as architecture evolves.
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    width, height = 1680, 980
+    width, height = 1760, 1120
     image = Image.new("RGB", (width, height), "#f4f7fb")
     draw = ImageDraw.Draw(image)
 
@@ -52,7 +52,7 @@ def ensure_architecture_png(output_path: Path) -> None:
         360,
         140,
         "router_agent",
-        "Keyword intent routing\nreviews vs market_watch vs analyst",
+        "Keyword intent routing\nreviews vs pricing vs market_watch vs analyst",
     )
     reviews = box(
         460,
@@ -77,6 +77,14 @@ def ensure_architecture_png(output_path: Path) -> None:
         140,
         "analyst_agent",
         "neighbor benchmarking\nstructured listing comparisons",
+    )
+    pricing = box(
+        460,
+        900,
+        360,
+        140,
+        "pricing_agent",
+        "comp-based price recommendation\nmarket signals + review volume",
     )
     execute_output = box(
         1040,
@@ -113,7 +121,7 @@ def ensure_architecture_png(output_path: Path) -> None:
     )
     alerts_inbox = box(
         1040,
-        700,
+        680,
         560,
         140,
         "Market Alerts Inbox",
@@ -121,11 +129,11 @@ def ensure_architecture_png(output_path: Path) -> None:
     )
     supabase_listings = box(
         1040,
-        700,
+        870,
         560,
         140,
         "Supabase Listing Store",
-        "large_dataset_table\nneighbor benchmark source data",
+        "large_dataset_table\nbenchmark + pricing source data",
     )
     cron = box(
         60,
@@ -146,6 +154,7 @@ def ensure_architecture_png(output_path: Path) -> None:
     arrow((router[0], router[1] + 85), (reviews[0], reviews[1] - 85))
     arrow((router[0], router[1] + 100), (market_watch[0], market_watch[1] - 100))
     arrow((router[0] + 120, router[1] + 120), (analyst[0] + 10, analyst[1] - 120))
+    arrow((router[0] + 150, router[1] + 120), (pricing[0] + 40, pricing[1] - 120))
     arrow((reviews[0] - 180, reviews[1]), (pinecone[0] + 165, pinecone[1]))
     arrow((reviews[0] - 180, reviews[1] + 20), (llmod[0] + 165, llmod[1]))
     arrow((market_watch[0] + 180, market_watch[1]), (market_apis[0] - 250, market_apis[1]))
@@ -154,6 +163,10 @@ def ensure_architecture_png(output_path: Path) -> None:
     arrow((reviews[0] + 180, reviews[1] - 40), (execute_output[0] - 250, execute_output[1] - 10))
     arrow((analyst[0] + 180, analyst[1]), (supabase_listings[0] - 280, supabase_listings[1]))
     arrow((analyst[0] + 180, analyst[1] - 20), (execute_output[0] - 280, execute_output[1] + 40))
+    arrow((pricing[0] + 180, pricing[1] - 20), (supabase_listings[0] - 280, supabase_listings[1] + 10))
+    arrow((pricing[0] + 180, pricing[1] - 55), (market_apis[0] - 280, market_apis[1] + 80))
+    arrow((pricing[0] - 180, pricing[1] - 65), (llmod[0] + 165, llmod[1] + 60))
+    arrow((pricing[0] + 180, pricing[1] - 85), (execute_output[0] - 280, execute_output[1] + 80))
     arrow((cron[0], cron[1] - 85), (market_watch[0], market_watch[1] + 85), color="#2d7f5f")
     arrow((cron[0] + 180, cron[1]), (alerts_inbox[0] - 250, alerts_inbox[1] + 20), color="#2d7f5f")
 

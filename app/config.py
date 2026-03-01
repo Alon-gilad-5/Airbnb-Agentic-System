@@ -88,6 +88,16 @@ class Settings:
     market_watch_storm_wind_kph_threshold: float
     market_watch_heavy_rain_mm_threshold: float
     market_watch_snow_cm_threshold: float
+    pricing_enabled: bool
+    pricing_default_horizon_days: int
+    pricing_max_horizon_days: int
+    pricing_raise_cap_low_conf_pct: float
+    pricing_raise_cap_med_conf_pct: float
+    pricing_raise_cap_high_conf_pct: float
+    pricing_event_radius_km: int
+    pricing_strong_event_threshold: int
+    pricing_weather_soft_threshold_days: int
+    pricing_review_volume_adjustment_pct: float
     mail_enabled: bool
     mail_bad_review_threshold: int
     mail_auto_send_enabled: bool
@@ -283,6 +293,18 @@ def load_settings() -> Settings:
             os.getenv("MARKET_WATCH_HEAVY_RAIN_MM_THRESHOLD", "20")
         ),
         market_watch_snow_cm_threshold=float(os.getenv("MARKET_WATCH_SNOW_CM_THRESHOLD", "4")),
+        pricing_enabled=parse_bool(os.getenv("PRICING_ENABLED"), True),
+        pricing_default_horizon_days=int(os.getenv("PRICING_DEFAULT_HORIZON_DAYS", "14")),
+        pricing_max_horizon_days=int(os.getenv("PRICING_MAX_HORIZON_DAYS", "30")),
+        pricing_raise_cap_low_conf_pct=float(os.getenv("PRICING_RAISE_CAP_LOW_CONF_PCT", "5")),
+        pricing_raise_cap_med_conf_pct=float(os.getenv("PRICING_RAISE_CAP_MED_CONF_PCT", "8")),
+        pricing_raise_cap_high_conf_pct=float(os.getenv("PRICING_RAISE_CAP_HIGH_CONF_PCT", "10")),
+        pricing_event_radius_km=int(
+            os.getenv("PRICING_EVENT_RADIUS_KM", os.getenv("MARKET_WATCH_EVENT_RADIUS_KM", "15"))
+        ),
+        pricing_strong_event_threshold=int(os.getenv("PRICING_STRONG_EVENT_THRESHOLD", "2")),
+        pricing_weather_soft_threshold_days=int(os.getenv("PRICING_WEATHER_SOFT_THRESHOLD_DAYS", "2")),
+        pricing_review_volume_adjustment_pct=float(os.getenv("PRICING_REVIEW_VOLUME_ADJUSTMENT_PCT", "1.5")),
         mail_enabled=parse_bool(os.getenv("MAIL_ENABLED"), True),
         mail_bad_review_threshold=int(os.getenv("MAIL_BAD_REVIEW_THRESHOLD", "3")),
         mail_auto_send_enabled=parse_bool(os.getenv("MAIL_AUTO_SEND_ENABLED"), False),

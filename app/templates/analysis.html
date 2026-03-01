@@ -49,6 +49,19 @@
     .composer-toggle{background:none;border:1px solid var(--border);color:var(--muted);padding:3px 10px;font-size:.8rem;border-radius:999px;cursor:pointer}
     .composer-toggle:hover{background:var(--bg);color:var(--ink)}
 
+    /* Answer card */
+    #analysisAnswer{display:none;border-color:#bfd6e5;background:linear-gradient(180deg,#fbfdff 0%,#f4f9fc 100%)}
+    #analysisAnswer.visible{display:block;animation:fade-in 250ms ease}
+    .answer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .answer-head h2{margin:0}
+    .answer-lede{margin-top:8px;font-size:1.14rem;line-height:1.45;font-weight:700;color:var(--ink)}
+    .answer-support{display:grid;gap:8px;margin-top:12px}
+    .answer-detail{display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-size:.96rem;line-height:1.5}
+    .answer-detail-label{flex:0 0 auto;font-size:.74rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding-top:2px}
+    .answer-detail-text{color:var(--ink)}
+    .answer-jump{background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 12px;font-size:.82rem;border-radius:999px;cursor:pointer}
+    .answer-jump:hover{background:var(--bg)}
+
     /* Summary strip */
     #analysisSummary{display:none}
     #analysisSummary.visible{display:block}
@@ -110,7 +123,7 @@
   <main class="layout">
     <section class="card">
       <div class="nav">
-        <a href="/">Reviews Console</a><a href="/mail">Mail Console</a><a href="/market-watch">Market Watch</a><a href="/analysis" class="active" aria-current="page">Analysis</a>
+        <a href="/">Reviews Console</a><a href="/mail">Mail Console</a><a href="/market-watch">Market Watch</a><a href="/analysis" class="active" aria-current="page">Analysis</a><a href="/pricing">Pricing</a>
       </div>
       <h1>Analysis Console</h1>
       <p>Ask the analyst how your property compares to nearby neighbors and inspect the structured benchmark data underneath.</p>
@@ -127,6 +140,17 @@
         <label for="llmProvider" class="muted">Provider</label><select id="llmProvider" aria-label="LLM provider"><option value="default">Default</option><option value="llmod">LLMOD</option><option value="openrouter">OpenRouter</option></select>
         <button id="runBtn">Run Analysis</button><span id="status" class="muted">Idle</span>
       </div>
+    </section>
+
+    <section class="card" id="analysisAnswer">
+      <div class="answer-head">
+        <div>
+          <h2>Answer</h2>
+          <div id="answerLede" class="answer-lede"></div>
+        </div>
+        <button type="button" class="answer-jump" id="answerJump" hidden>Read detailed explanation</button>
+      </div>
+      <div id="answerSupport" class="answer-support"></div>
     </section>
 
     <section class="card" id="analysisSummary">
@@ -159,7 +183,7 @@
     </section>
 
     <section class="card" id="narrativeSection">
-      <h2>Narrative</h2>
+      <h2>Detailed Explanation</h2>
       <div id="narrative" class="narrative empty-note">No run yet.</div>
       <button type="button" class="narrative-toggle" id="narrativeToggle" hidden>Show full narrative</button>
     </section>
@@ -181,7 +205,8 @@
     const selectionBadgeEl=document.getElementById("selectionBadge"),selectionEmptyEl=document.getElementById("selectionEmpty"),selectionContentEl=document.getElementById("selectionContent"),selectionTitleEl=document.getElementById("selectionTitle"),selectionSubtitleEl=document.getElementById("selectionSubtitle"),selectionFactsEl=document.getElementById("selectionFacts");
     const selectionListingsWrapEl=document.getElementById("selectionListingsWrap"),selectionListingsEl=document.getElementById("selectionListings"),explainSelectionBtn=document.getElementById("explainSelectionBtn"),selectionExplainStatusEl=document.getElementById("selectionExplainStatus"),selectionExplanationEl=document.getElementById("selectionExplanation");
     const composerEl=document.getElementById("analysisComposer"),composerToggleEl=document.getElementById("composerToggle"),analysisSummaryEl=document.getElementById("analysisSummary"),summaryContentEl=document.getElementById("summaryContent");
-    const numericSectionEl=document.getElementById("numericSection"),categoricalSectionEl=document.getElementById("categoricalSection"),narrativeToggleEl=document.getElementById("narrativeToggle"),selectionDrawerEl=document.getElementById("selectionDrawer");
+    const analysisAnswerEl=document.getElementById("analysisAnswer"),answerLedeEl=document.getElementById("answerLede"),answerSupportEl=document.getElementById("answerSupport"),answerJumpEl=document.getElementById("answerJump");
+    const numericSectionEl=document.getElementById("numericSection"),categoricalSectionEl=document.getElementById("categoricalSection"),narrativeSectionEl=document.getElementById("narrativeSection"),narrativeToggleEl=document.getElementById("narrativeToggle"),selectionDrawerEl=document.getElementById("selectionDrawer");
     const technicalTraceSectionEl=document.getElementById("technicalTraceSection"),traceCountEl=document.getElementById("traceCount"),numericLegendEl=document.getElementById("numericLegend"),chartTooltipEl=document.getElementById("chartTooltip");
 
     const LLM_PROVIDER_STORAGE_KEY="analysis_console_llm_provider",PROPERTY_PROFILE_STORAGE_KEY="active_property_profile_id",allowedProviders=new Set(["default","llmod","openrouter"]);
@@ -219,6 +244,22 @@
       analysisState.narrativeExpanded=!analysisState.narrativeExpanded;
       if(analysisState.narrativeExpanded){narrativeEl.textContent=analysisState.fullNarrative;narrativeToggleEl.textContent="Hide full narrative";}
       else{const p=analysisState.fullNarrative.split(/\n\n+/);narrativeEl.textContent=p[0];narrativeToggleEl.textContent="Show full narrative";}
+    }
+
+    function splitParagraphs(text){
+      return String(text||"").split(/\n\n+/).map(part=>part.trim()).filter(Boolean);
+    }
+    function firstSentence(text){
+      const normalized=String(text||"").trim();
+      if(!normalized)return"";
+      const match=normalized.match(/(.+?[.!?])(?:\s|$)/);
+      return(match?match[1]:normalized).trim();
+    }
+    function extractRecommendation(paragraphs){
+      for(const paragraph of paragraphs){
+        if(/^recommendation:/i.test(paragraph))return paragraph.replace(/^recommendation:\s*/i,"").trim();
+      }
+      return"";
     }
 
     /* ── Delta / status helpers ── */
@@ -307,6 +348,60 @@
       summaryContentEl.innerHTML=`<p class="summary-verdict">${escHtml(insights.verdict)}</p><div class="summary-pills">${pills.join("")}</div>`;
       analysisSummaryEl.classList.add("visible");
       summaryContentEl.querySelectorAll("[data-scroll-metric]").forEach(pill=>{pill.addEventListener("click",()=>scrollToMetric(pill.dataset.scrollMetric));});
+    }
+
+    function scrollToNarrative(){
+      narrativeSectionEl.scrollIntoView({behavior:"smooth",block:"start"});
+    }
+    function renderAnswer(data){
+      const insights=computeSummaryInsights(data);
+      if(!insights){analysisAnswerEl.classList.remove("visible");answerJumpEl.hidden=true;return;}
+      const leadItem=insights.leadItem;
+      const leadDelta=leadItem?computeMetricDelta(leadItem):null;
+      const paragraphs=splitParagraphs(data.response||"");
+      const recommendation=extractRecommendation(paragraphs);
+      const supports=[];
+      let lede=`Your property is ${insights.verdict.toLowerCase()}.`;
+      if(leadItem&&leadDelta!==null){
+        const absoluteDelta=Math.abs(leadDelta).toFixed(2);
+        const directionText=leadDelta<0?"below":leadDelta>0?"above":"in line with";
+        lede=`Your property is ${insights.verdict.toLowerCase()}, with ${leadItem.label} ${directionText} the neighborhood average by ${absoluteDelta}.`;
+      }
+      if(insights.biggestGap){
+        const gapDelta=insights.biggestGap._delta;
+        supports.push({
+          label:"Biggest gap",
+          text:`${insights.biggestGap.label} is ${(gapDelta>0?"+":"")+gapDelta.toFixed(2)} versus the neighborhood average.`,
+        });
+      }
+      if(insights.strongest&&insights.strongest.column!==insights.biggestGap?.column){
+        const strongestDelta=insights.strongest._delta;
+        supports.push({
+          label:"Best hold",
+          text:`${insights.strongest.label} is your closest metric at ${(strongestDelta>0?"+":"")+strongestDelta.toFixed(2)} versus average.`,
+        });
+      }
+      if(recommendation){
+        supports.push({
+          label:"Next move",
+          text:firstSentence(recommendation),
+        });
+      }else if(paragraphs.length>1){
+        supports.push({
+          label:"Why",
+          text:firstSentence(paragraphs[1]),
+        });
+      }
+      if(insights.rankText){
+        supports.push({
+          label:"Rank",
+          text:`You currently rank ${insights.rankText} on ${leadItem?.label||"this benchmark"}.`,
+        });
+      }
+      answerLedeEl.textContent=lede;
+      answerSupportEl.innerHTML=supports.slice(0,3).map(item=>`<div class="answer-detail"><span class="answer-detail-label">${escHtml(item.label)}</span><span class="answer-detail-text">${escHtml(item.text)}</span></div>`).join("");
+      answerJumpEl.hidden=!paragraphs.length;
+      analysisAnswerEl.classList.add("visible");
     }
 
     /* ── Scroll / flash ── */
@@ -427,17 +522,18 @@
       narrativeEl.textContent="Working...";narrativeEl.classList.add("empty-note");narrativeToggleEl.hidden=true;
       numericWrapEl.innerHTML='<p class="empty-note">Loading...</p>';numericLegendEl.innerHTML="";
       categoricalSectionEl.style.display="";categoricalWrapEl.innerHTML='<p class="empty-note">Loading...</p>';
-      stepsEl.innerHTML="";analysisSummaryEl.classList.remove("visible");resetSelectionDrawer();
+      stepsEl.innerHTML="";analysisSummaryEl.classList.remove("visible");analysisAnswerEl.classList.remove("visible");resetSelectionDrawer();
       try{
         const res=await fetch("/api/analysis",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:selectedPropertyProfile.property_id,prompt,llm_provider:provider})});
         const data=await res.json();
         if(data.status==="error"){
           narrativeEl.textContent=data.error||"Analysis failed.";narrativeEl.classList.add("empty-note");narrativeToggleEl.hidden=true;
           numericWrapEl.innerHTML='<p class="empty-note">No numeric comparison data.</p>';numericLegendEl.innerHTML="";
-          categoricalSectionEl.style.display="none";analysisSummaryEl.classList.remove("visible");
+          categoricalSectionEl.style.display="none";analysisSummaryEl.classList.remove("visible");analysisAnswerEl.classList.remove("visible");
         }else{
           analysisState.latestPrompt=prompt;analysisState.analysisCategory=data.analysis_category||null;
           renderSummary(data);
+          renderAnswer(data);
           setNarrativePreview(data.response||"No narrative returned.");
           const sorted=sortNumericItems(data.numeric_comparison||[],data.analysis_category);
           renderNumeric(sorted);renderCategorical(data.categorical_comparison||[]);
@@ -447,7 +543,7 @@
       }catch(err){
         narrativeEl.textContent=String(err);narrativeEl.classList.add("empty-note");narrativeToggleEl.hidden=true;
         numericWrapEl.innerHTML='<p class="empty-note">No numeric comparison data.</p>';numericLegendEl.innerHTML="";
-        categoricalSectionEl.style.display="none";analysisSummaryEl.classList.remove("visible");
+        categoricalSectionEl.style.display="none";analysisSummaryEl.classList.remove("visible");analysisAnswerEl.classList.remove("visible");
         technicalTraceSectionEl.classList.remove("visible");setComposerCondensed(true);statusEl.textContent="Failed";
       }finally{runBtn.disabled=false;}
     }
@@ -458,6 +554,7 @@
     promptEl.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){event.preventDefault();runAnalysis();}});
     explainSelectionBtn.addEventListener("click",explainActiveSelection);
     composerToggleEl.addEventListener("click",()=>{setComposerCondensed(analysisState.composerExpanded);});
+    answerJumpEl.addEventListener("click",scrollToNarrative);
     narrativeToggleEl.addEventListener("click",toggleNarrative);
     resetSelectionDrawer();loadPropertyProfiles();
   </script>

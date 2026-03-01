@@ -23,6 +23,7 @@ from app.agents.base import Agent
 from app.agents.analyst_agent import AnalystAgent
 from app.agents.mail_agent import MailAgent, MailAgentConfig
 from app.agents.market_watch_agent import MarketWatchAgent, MarketWatchAgentConfig
+from app.agents.pricing_agent import PricingAgent, PricingAgentConfig, outcome_to_response
 from app.agents.reviews_agent import ReviewsAgent, ReviewsAgentConfig
 from app.agents.router_agent import RouterAgent
 from app.architecture import ensure_architecture_png
@@ -53,6 +54,8 @@ from app.schemas import (
     MarketWatchRunResponse,
     NotificationItem,
     NotificationsResponse,
+    PricingRequest,
+    PricingResponse,
     PropertyProfileResponse,
     PropertyProfilesResponse,
     StepLog,
@@ -327,6 +330,31 @@ def _build_analyst_agent(provider_chat_service: ChatService) -> AnalystAgent:
     )
 
 
+def _build_pricing_agent(provider_chat_service: ChatService) -> PricingAgent:
+    """Construct a pricing agent bound to one configured chat provider."""
+
+    return PricingAgent(
+        listing_store=listing_store,
+        neighbor_store=neighbor_store,
+        market_data_providers=market_data_providers,
+        chat_service=provider_chat_service,
+        config=PricingAgentConfig(
+            default_horizon_days=settings.pricing_default_horizon_days,
+            max_horizon_days=settings.pricing_max_horizon_days,
+            low_conf_cap_pct=settings.pricing_raise_cap_low_conf_pct,
+            medium_conf_cap_pct=settings.pricing_raise_cap_med_conf_pct,
+            high_conf_cap_pct=settings.pricing_raise_cap_high_conf_pct,
+            event_radius_km=settings.pricing_event_radius_km,
+            strong_event_threshold=settings.pricing_strong_event_threshold,
+            weather_soft_threshold_days=settings.pricing_weather_soft_threshold_days,
+            storm_wind_kph_threshold=settings.market_watch_storm_wind_kph_threshold,
+            heavy_rain_mm_threshold=settings.market_watch_heavy_rain_mm_threshold,
+            snow_cm_threshold=settings.market_watch_snow_cm_threshold,
+            review_volume_adjustment_pct=settings.pricing_review_volume_adjustment_pct,
+        ),
+    )
+
+
 reviews_agents_by_provider: dict[str, ReviewsAgent] = {
     provider_name: _build_reviews_agent(provider_chat_service)
     for provider_name, provider_chat_service in chat_services_by_provider.items()
@@ -339,8 +367,13 @@ analysis_agents_by_provider: dict[str, AnalystAgent] = {
     provider_name: _build_analyst_agent(provider_chat_service)
     for provider_name, provider_chat_service in chat_services_by_provider.items()
 }
+pricing_agents_by_provider: dict[str, PricingAgent] = {
+    provider_name: _build_pricing_agent(provider_chat_service)
+    for provider_name, provider_chat_service in chat_services_by_provider.items()
+}
 mail_agent = mail_agents_by_provider[default_chat_provider]
 analyst_agent = analysis_agents_by_provider[default_chat_provider]
+pricing_agent = pricing_agents_by_provider[default_chat_provider]
 notification_store = NotificationStore(database_url=settings.database_url)
 evidence_flag_store = EvidenceFlagStore(database_url=settings.database_url)
 
@@ -358,6 +391,7 @@ agent_registry: dict[str, Agent] = {
     "market_watch_agent": market_watch_agent,
     "mail_agent": mail_agent,
     "analyst_agent": analyst_agent,
+    "pricing_agent": pricing_agent,
 }
 
 
@@ -628,6 +662,36 @@ def _resolve_analysis_agent(
     return target_agent, None
 
 
+def _resolve_pricing_agent(
+    requested_provider_raw: str | None,
+) -> tuple[PricingAgent | None, str | None]:
+    """Resolve pricing agent/provider pair and return an error string when invalid."""
+
+    requested_provider = (requested_provider_raw or "default").strip().lower()
+    provider_is_explicit = requested_provider in VALID_CHAT_PROVIDERS
+    resolved_provider = (
+        default_chat_provider
+        if requested_provider in {"", "default"}
+        else requested_provider
+    )
+    if resolved_provider not in VALID_CHAT_PROVIDERS:
+        resolved_provider = default_chat_provider
+
+    provider_chat_service = chat_services_by_provider.get(resolved_provider)
+    if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+        return None, (
+            f"Requested llm_provider '{resolved_provider}' is not configured. "
+            "Set required provider env vars and retry."
+        )
+
+    target_agent = pricing_agents_by_provider.get(resolved_provider)
+    if target_agent is None:
+        target_agent = pricing_agents_by_provider.get(default_chat_provider)
+    if target_agent is None:
+        target_agent = pricing_agent
+    return target_agent, None
+
+
 def _build_property_profiles_response() -> PropertyProfilesResponse:
     """Return profile list consumed by the reviews/market-watch UIs."""
 
@@ -643,6 +707,18 @@ def _build_property_profiles_response() -> PropertyProfilesResponse:
             )
         )
     return PropertyProfilesResponse(default_profile_id="primary", profiles=profiles)
+
+
+def _owner_for_property_id(property_id: str | None) -> ActiveOwnerContext | None:
+    """Resolve one configured owner profile by property_id when possible."""
+
+    clean_property_id = property_id.strip() if property_id else ""
+    if clean_property_id:
+        for owner in property_profiles.values():
+            if (owner.property_id or "").strip() == clean_property_id:
+                return owner
+        return None
+    return settings.active_owner
 
 
 def _build_autonomous_context() -> dict[str, object]:
@@ -765,20 +841,29 @@ market_watch_scheduler = MarketWatchScheduler(
 )
 
 
+def _refresh_architecture_png() -> None:
+    """Regenerate the architecture diagram, falling back to an existing file on write failure."""
+
+    try:
+        ensure_architecture_png(ARCH_PATH)
+    except Exception:
+        if not ARCH_PATH.exists():
+            raise
+        logger.warning("model_architecture regeneration failed, serving existing PNG", exc_info=True)
+
+
 @app.on_event("startup")
 def startup() -> None:
     """Ensure static assets exist and start autonomous scheduler when configured."""
 
-    # Vercel/runtime filesystem may be read-only; skip regeneration if file exists or write fails.
-    if not ARCH_PATH.exists():
-        try:
-            ensure_architecture_png(ARCH_PATH)
-        except Exception as exc:
-            logger.warning(
-                "model_architecture generation skipped: %s: %s",
-                type(exc).__name__,
-                exc,
-            )
+    try:
+        _refresh_architecture_png()
+    except Exception as exc:
+        logger.warning(
+            "model_architecture generation skipped: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
     market_watch_scheduler.start()
 
     # Gmail push: renew watch in a background thread so slow DB / API calls
@@ -828,6 +913,13 @@ def analysis_ui(request: Request) -> HTMLResponse:
     """Analysis console for structured benchmarking against neighbors."""
 
     return templates.TemplateResponse("analysis.html", {"request": request})
+
+
+@app.get("/pricing", response_class=HTMLResponse)
+def pricing_ui(request: Request) -> HTMLResponse:
+    """Pricing console for deterministic nightly-rate recommendations."""
+
+    return templates.TemplateResponse("pricing.html", {"request": request})
 
 
 @app.get("/labeling", response_class=HTMLResponse)
@@ -993,12 +1085,13 @@ def agent_info() -> AgentInfoResponse:
     return AgentInfoResponse(
         description=(
             "Multi-agent-ready hospitality insights API. "
-            "Enabled domain agents: reviews_agent, market_watch_agent, mail_agent, and analyst_agent."
+            "Enabled domain agents: reviews_agent, market_watch_agent, mail_agent, analyst_agent, and pricing_agent."
         ),
         purpose=(
             "Answer business questions from guest reviews, provide proactive market intelligence "
             "from weather/events/holiday signals, manage Airbnb email workflows, "
-            "and benchmark one property against its neighbors using structured listing data."
+            "benchmark one property against its neighbors using structured listing data, "
+            "and recommend a nightly rate using comp, quality, market, and review-volume signals."
         ),
         prompt_template=AgentPromptTemplate(
             template=(
@@ -1050,7 +1143,63 @@ def agent_info() -> AgentInfoResponse:
                         response={"text": "Your property is above the neighbor average on cleanliness and communication..."},
                     ),
                 ],
-            )
+            ),
+            AgentPromptExample(
+                prompt="What should I charge next weekend?",
+                full_response=(
+                    "Raise nightly price from $145 to about $154. Confidence: medium. "
+                    "You are priced below nearby comps, your review position is competitive, "
+                    "and your review base supports a modest premium."
+                ),
+                steps=[
+                    StepLog(
+                        module="router_agent",
+                        prompt={"user_prompt": "What should I charge next weekend?"},
+                        response={"selected_agent": "pricing_agent", "reason": "Matched pricing recommendation intent keywords."},
+                    ),
+                    StepLog(
+                        module="pricing_agent.context_resolve",
+                        prompt={"context_keys": ["property_id", "latitude", "longitude"]},
+                        response={"property_id": "42409434", "horizon_days": 14, "price_mode": "recommended"},
+                    ),
+                    StepLog(
+                        module="pricing_agent.neighbor_lookup",
+                        prompt={"property_id": "42409434"},
+                        response={"neighbor_count": 20, "neighbor_ids": ["2722835", "14559400"]},
+                    ),
+                    StepLog(
+                        module="pricing_agent.data_fetch",
+                        prompt={"property_id": "42409434"},
+                        response={
+                            "current_price": 145.0,
+                            "neighbor_avg_price": 152.0,
+                            "owner_number_of_reviews": 120,
+                            "neighbor_avg_number_of_reviews": 74.0,
+                        },
+                    ),
+                    StepLog(
+                        module="pricing_agent.market_signal_fetch",
+                        prompt={"horizon_days": 14},
+                        response={"market_pressure": "strong", "event_count": 2, "holiday_count": 1},
+                    ),
+                    StepLog(
+                        module="pricing_agent.recommendation_compute",
+                        prompt={"price_mode": "recommended", "confidence": "medium"},
+                        response={
+                            "base_price_action": "raise",
+                            "base_price_change_pct": 6.0,
+                            "review_volume_position": "above_market",
+                            "review_volume_adjustment_pct": 1.0,
+                            "final_price_change_pct": 7.0,
+                        },
+                    ),
+                    StepLog(
+                        module="pricing_agent.answer_generation",
+                        prompt={"model": settings.chat_model, "system_prompt": "...", "user_prompt": "..."},
+                        response={"text": "Raise nightly price from $145 to about $154..."},
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -1059,14 +1208,13 @@ def agent_info() -> AgentInfoResponse:
 def model_architecture() -> FileResponse:
     """Required endpoint: returns architecture diagram PNG."""
 
-    if not ARCH_PATH.exists():
-        try:
-            ensure_architecture_png(ARCH_PATH)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"model_architecture unavailable: {type(exc).__name__}: {exc}",
-            ) from exc
+    try:
+        _refresh_architecture_png()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"model_architecture unavailable: {type(exc).__name__}: {exc}",
+        ) from exc
     return FileResponse(path=str(ARCH_PATH), media_type="image/png", filename="model_architecture.png")
 
 
@@ -1192,6 +1340,82 @@ def run_analysis(payload: AnalysisRequest) -> AnalysisResponse:
         )
 
 
+@app.post("/api/pricing", response_model=PricingResponse)
+def run_pricing(payload: PricingRequest) -> PricingResponse:
+    """Run prompt-driven pricing recommendation for one property."""
+
+    if not settings.pricing_enabled:
+        return PricingResponse(
+            status="error",
+            error="pricing_agent is disabled (PRICING_ENABLED=false).",
+            response=None,
+            recommendation=None,
+            signals=None,
+            steps=[],
+        )
+    if payload.horizon_days > settings.pricing_max_horizon_days:
+        return PricingResponse(
+            status="error",
+            error=(
+                f"horizon_days must be <= configured PRICING_MAX_HORIZON_DAYS "
+                f"({settings.pricing_max_horizon_days})."
+            ),
+            response=None,
+            recommendation=None,
+            signals=None,
+            steps=[],
+        )
+
+    target_agent, provider_error = _resolve_pricing_agent(payload.llm_provider)
+    if provider_error:
+        return PricingResponse(
+            status="error",
+            error=provider_error,
+            response=None,
+            recommendation=None,
+            signals=None,
+            steps=[],
+        )
+
+    owner = _owner_for_property_id(payload.property_id)
+    property_id = (
+        payload.property_id.strip()
+        if payload.property_id and payload.property_id.strip()
+        else owner.property_id
+    )
+    context: dict[str, object] = {
+        "property_id": property_id,
+        "horizon_days": payload.horizon_days,
+        "price_mode": payload.price_mode,
+    }
+    if owner is not None:
+        context.update(
+            {
+                "property_name": owner.property_name,
+                "latitude": owner.latitude,
+                "longitude": owner.longitude,
+            }
+        )
+    prompt = (
+        payload.prompt.strip()
+        if payload.prompt and payload.prompt.strip()
+        else "What should I charge for the selected horizon?"
+    )
+    try:
+        assert target_agent is not None
+        outcome = target_agent.recommend(prompt, context=context)
+        return outcome_to_response(outcome)
+    except Exception as exc:
+        return PricingResponse(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}",
+            response=None,
+            recommendation=None,
+            signals=None,
+            steps=[],
+        )
+
+
 @app.post("/api/analysis/explain-selection", response_model=AnalysisExplainSelectionResponse)
 def explain_analysis_selection(payload: AnalysisExplainSelectionRequest) -> AnalysisExplainSelectionResponse:
     """Explain one selected visualization element from the analysis console."""
@@ -1252,6 +1476,13 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
             decision.reason += " market_watch is disabled, rerouted to reviews_agent."
             route_step.response["selected_agent"] = decision.agent_name
             route_step.response["reason"] = decision.reason
+        if decision.agent_name == "pricing_agent" and not settings.pricing_enabled:
+            return ExecuteResponse(
+                status="error",
+                error="pricing_agent is disabled (PRICING_ENABLED=false).",
+                response=None,
+                steps=steps + [route_step],
+            )
         if decision.agent_name == "mail_agent" and not settings.mail_enabled:
             decision.agent_name = "reviews_agent"
             decision.reason += " mail_agent is disabled, rerouted to reviews_agent."
@@ -1306,6 +1537,21 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
             target_agent = analysis_agents_by_provider.get(resolved_provider)
             if target_agent is None:
                 target_agent = analysis_agents_by_provider.get(default_chat_provider)
+        elif decision.agent_name == "pricing_agent":
+            provider_chat_service = chat_services_by_provider.get(resolved_provider)
+            if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
+                return ExecuteResponse(
+                    status="error",
+                    error=(
+                        f"Requested llm_provider '{resolved_provider}' is not configured. "
+                        f"Set required provider env vars and retry."
+                    ),
+                    response=None,
+                    steps=steps,
+                )
+            target_agent = pricing_agents_by_provider.get(resolved_provider)
+            if target_agent is None:
+                target_agent = pricing_agents_by_provider.get(default_chat_provider)
         else:
             # market_watch is deterministic and does not use chat provider override.
             target_agent = agent_registry.get(decision.agent_name)
