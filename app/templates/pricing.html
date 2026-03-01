@@ -16,6 +16,30 @@
     .headline{font-size:1.2rem;font-weight:700;margin-top:8px}
     .badge{display:inline-flex;border-radius:999px;padding:5px 10px;font-size:.82rem;font-weight:700}
     .badge.low{background:#fee2e2;color:#b91c1c}.badge.medium{background:#fef3c7;color:#92400e}.badge.high{background:#dcfce7;color:#166534}
+    .metric-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+    .metric-kicker{font-size:.76rem;letter-spacing:.08em;text-transform:uppercase;color:#5b7186;font-weight:700}
+    .metric-title{font-size:1.7rem;line-height:1.05;font-weight:800;margin-top:4px}
+    .metric-subtitle{margin-top:6px;color:#5b7186}
+    .price-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .price-chip{border:1px solid #d6e3f0;border-radius:14px;padding:12px;background:linear-gradient(180deg,#ffffff,#f5f9fd)}
+    .price-chip strong{display:block;font-size:.8rem;color:#5b7186;margin-bottom:4px}
+    .price-value{font-size:1.5rem;font-weight:800;color:#17324a}
+    .price-delta{font-size:.82rem;color:#5b7186;margin-top:4px}
+    .mini-track{position:relative;height:10px;border-radius:999px;background:linear-gradient(90deg,#e8f0f7,#d7e4f0);margin:10px 0 6px}
+    .mini-track span{position:absolute;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:999px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(23,50,74,.18)}
+    .mini-track .owner{background:#1f5f8b}
+    .mini-track .neighbor{background:#f59e0b}
+    .track-labels{display:flex;justify-content:space-between;gap:10px;font-size:.8rem;color:#5b7186}
+    .tag-row{display:flex;flex-wrap:wrap;gap:8px}
+    .signal-tag{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;font-size:.82rem;font-weight:700;background:#edf4fb;color:#214866}
+    .signal-tag.positive{background:#e7f7ef;color:#17603f}
+    .signal-tag.warning{background:#fff4df;color:#9a5a00}
+    .signal-tag.negative{background:#fde8e8;color:#a12b2b}
+    .signal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .signal-tile{border:1px solid #d6e3f0;border-radius:12px;padding:10px 12px;background:#fff}
+    .signal-tile strong{display:block;font-size:.78rem;color:#5b7186;margin-bottom:4px}
+    .signal-tile span{font-size:1.05rem;font-weight:800;color:#17324a}
+    .signal-note{margin-top:12px;font-size:.84rem;color:#5b7186}
     .steps{display:grid;gap:10px}
     .step{border:1px solid var(--border);border-radius:10px;background:#fcfeff;overflow:hidden}
     .step details{padding:8px 10px}
@@ -24,6 +48,10 @@
     .module-badge{font-size:.8rem;border-radius:999px;padding:2px 8px;background:#dbeafe;color:#1e40af}
     pre{background:#f8fbfe;border:1px solid var(--border);border-radius:10px;padding:12px;overflow:auto;margin:6px 0 0;white-space:pre-wrap;word-break:break-word}
     .nav a.active{background:rgba(31,95,139,.14)}
+    @media (max-width:700px){
+      .price-pair,.signal-grid{grid-template-columns:1fr}
+      .metric-title{font-size:1.4rem}
+    }
   </style>
 </head>
 <body>
@@ -105,9 +133,76 @@
 
     function escHtml(value){const div=document.createElement("div");div.textContent=value==null?"":String(value);return div.innerHTML;}
     function formatNumber(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);return Math.abs(num-Math.round(num))<1e-9?String(Math.round(num)):num.toFixed(2);}
+    function formatCurrency(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);return `$${Math.abs(num-Math.round(num))<1e-9?Math.round(num):num.toFixed(2)}`;}
+    function formatSignedPct(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);const rounded=Math.abs(num-Math.round(num))<1e-9?String(Math.round(num)):num.toFixed(1);return `${num>0?"+":num<0?"-":""}${rounded.replace("-","")}%`;}
+    function formatSignedDelta(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);const rounded=Math.abs(num-Math.round(num))<1e-9?String(Math.round(num)):num.toFixed(2);return `${num>0?"+":num<0?"-":""}${rounded.replace("-","")}`;}
+    function toTitle(value){return String(value||"").replace(/_/g," ").replace(/\b\w/g,(m)=>m.toUpperCase());}
+    function clampPct(value){const num=Number(value);if(!Number.isFinite(num))return 50;return Math.max(0,Math.min(100,num));}
+    function qualityTone(gap){const num=Number(gap);if(!Number.isFinite(num))return{label:"Quality unclear",tone:"warning"};if(num>=0.03)return{label:"Reviews above market",tone:"positive"};if(num<=-0.05)return{label:"Reviews slightly weaker",tone:"warning"};return{label:"Reviews near market",tone:"positive"};}
+    function pressureTone(value){if(value==="strong")return{label:"Demand strong",tone:"positive"};if(value==="soft")return{label:"Demand soft",tone:"negative"};return{label:"Demand neutral",tone:"warning"};}
+    function volumeTone(value){if(value==="above_market")return{label:"Review volume above market",tone:"positive"};if(value==="below_market")return{label:"Review volume below market",tone:"warning"};return{label:"Review volume in line",tone:"warning"};}
+    function pricePositionTone(current,avg){const a=Number(avg),c=Number(current);if(!Number.isFinite(a)||!Number.isFinite(c))return{label:"Comp position unavailable",tone:"warning"};if(c<a)return{label:"Below nearby comps",tone:"positive"};if(c>a)return{label:"Above nearby comps",tone:"warning"};return{label:"At comp average",tone:"warning"};}
+    function compactRisk(value){if(!value)return"Low immediate risk.";const text=String(value);return text.length>90?`${text.slice(0,87)}...`:text;}
+    function computeTrackPosition(value,min,max){const v=Number(value),lo=Number(min),hi=Number(max);if(!Number.isFinite(v)||!Number.isFinite(lo)||!Number.isFinite(hi)||hi<=lo)return 50;return clampPct(((v-lo)/(hi-lo))*100);}
     function setSelectedPropertyProfile(profileId){selectedPropertyProfile=propertyProfilesById.get(profileId)||null;propertyProfileEl.value=profileId;}
     function setConfidenceBadge(confidence){if(!confidence){confidenceBadgeEl.hidden=true;return;}confidenceBadgeEl.hidden=false;confidenceBadgeEl.className=`badge ${confidence}`;confidenceBadgeEl.textContent=confidence;}
     function renderSteps(steps){stepsEl.innerHTML="";for(const step of (steps||[])){const card=document.createElement("div");card.className="step";card.innerHTML=`<details><summary><span class="module-badge">${escHtml(step.module||"module")}</span></summary><pre>${escHtml(JSON.stringify({prompt:step.prompt,response:step.response},null,2))}</pre></details>`;stepsEl.appendChild(card);}}
+    function renderRecommendation(rec,signals){
+      const current=formatCurrency(rec.current_price),recommended=formatCurrency(rec.recommended_price),delta=formatSignedPct(rec.price_change_pct);
+      const priceTag=pricePositionTone(rec.current_price,signals.neighbor_avg_price),demandTag=pressureTone(signals.market_pressure),reviewTag=qualityTone(signals.review_score_gap);
+      const ownerPos=computeTrackPosition(rec.current_price,signals.neighbor_min_price,signals.neighbor_max_price),neighborPos=computeTrackPosition(signals.neighbor_avg_price,signals.neighbor_min_price,signals.neighbor_max_price);
+      recommendationEl.innerHTML=`
+        <div class="metric-hero">
+          <div>
+            <div class="metric-kicker">Decision</div>
+            <div class="metric-title">${escHtml(toTitle(rec.price_action||"hold"))} at ${escHtml(recommended)}</div>
+            <div class="metric-subtitle">${escHtml(delta)} vs current rate</div>
+          </div>
+        </div>
+        <div class="price-pair">
+          <div class="price-chip">
+            <strong>Current</strong>
+            <div class="price-value">${escHtml(current)}</div>
+          </div>
+          <div class="price-chip">
+            <strong>Recommended</strong>
+            <div class="price-value">${escHtml(recommended)}</div>
+            <div class="price-delta">${escHtml(delta)}</div>
+          </div>
+        </div>
+        <div class="mini-track">
+          <span class="owner" style="left:${ownerPos}%"></span>
+          <span class="neighbor" style="left:${neighborPos}%"></span>
+        </div>
+        <div class="track-labels">
+          <span>Comp min ${escHtml(formatCurrency(signals.neighbor_min_price))}</span>
+          <span>Avg ${escHtml(formatCurrency(signals.neighbor_avg_price))}</span>
+          <span>Max ${escHtml(formatCurrency(signals.neighbor_max_price))}</span>
+        </div>
+        <div class="tag-row" style="margin-top:12px">
+          <span class="signal-tag ${priceTag.tone}">${escHtml(priceTag.label)}</span>
+          <span class="signal-tag ${demandTag.tone}">${escHtml(demandTag.label)}</span>
+          <span class="signal-tag ${reviewTag.tone}">${escHtml(reviewTag.label)}</span>
+        </div>
+        <div class="signal-note"><strong>Watchout:</strong> ${escHtml(compactRisk(rec.risk_note))}</div>`;
+    }
+    function renderSignals(signals){
+      const reviewState=qualityTone(signals.review_score_gap),volumeState=volumeTone(signals.review_volume_strength),pressureState=pressureTone(signals.market_pressure);
+      signalsEl.innerHTML=`
+        <div class="signal-grid">
+          <div class="signal-tile"><strong>Comp Avg</strong><span>${escHtml(formatCurrency(signals.neighbor_avg_price))}</span></div>
+          <div class="signal-tile"><strong>Range</strong><span>${escHtml(`${formatCurrency(signals.neighbor_min_price)} - ${formatCurrency(signals.neighbor_max_price)}`)}</span></div>
+          <div class="signal-tile"><strong>Review Position</strong><span>${escHtml(reviewState.label)}</span></div>
+          <div class="signal-tile"><strong>Review Gap</strong><span>${escHtml(formatSignedDelta(signals.review_score_gap))}</span></div>
+          <div class="signal-tile"><strong>Review Volume</strong><span>${escHtml(toTitle(signals.review_volume_strength||"n/a"))}</span></div>
+          <div class="signal-tile"><strong>Market Pressure</strong><span>${escHtml(toTitle(signals.market_pressure||"n/a"))}</span></div>
+        </div>
+        <div class="tag-row" style="margin-top:12px">
+          <span class="signal-tag ${volumeState.tone}">${escHtml(volumeState.label)}</span>
+          <span class="signal-tag ${pressureState.tone}">${escHtml(pressureState.label)}</span>
+          <span class="signal-tag warning">Recent reviews ${escHtml(formatNumber(signals.owner_recent_reviews_30d))} vs ${escHtml(formatNumber(signals.neighbor_avg_recent_reviews_30d))}</span>
+        </div>`;
+    }
 
     async function loadPropertyProfiles(){
       propertyProfilesById=new Map();selectedPropertyProfile=null;
@@ -138,11 +233,11 @@
           return;
         }
         const rec=data.recommendation||{}, signals=data.signals||{};
-        headlineEl.textContent=`${String(rec.price_action||"hold").toUpperCase()} ${rec.price_change_pct==null?"":`${formatNumber(rec.price_change_pct)}%`}`;
+        headlineEl.textContent=`${toTitle(rec.price_action||"hold")} at ${formatCurrency(rec.recommended_price)}`;
         setConfidenceBadge(rec.confidence||null);
         finalResponseEl.textContent=data.response||"No response.";
-        recommendationEl.innerHTML=`<strong>Current:</strong> ${formatNumber(rec.current_price)}<br><strong>Recommended:</strong> ${formatNumber(rec.recommended_price)}<br><strong>Reason:</strong> ${escHtml(rec.primary_reason||"n/a")}<br><strong>Risk:</strong> ${escHtml(rec.risk_note||"n/a")}`;
-        signalsEl.innerHTML=`<strong>Neighbor avg:</strong> ${formatNumber(signals.neighbor_avg_price)}<br><strong>Range:</strong> ${formatNumber(signals.neighbor_min_price)} to ${formatNumber(signals.neighbor_max_price)}<br><strong>Review gap:</strong> ${formatNumber(signals.review_score_gap)}<br><strong>Total reviews:</strong> ${formatNumber(signals.owner_number_of_reviews)} vs ${formatNumber(signals.neighbor_avg_number_of_reviews)} avg<br><strong>Recent reviews 30d:</strong> ${formatNumber(signals.owner_recent_reviews_30d)} vs ${formatNumber(signals.neighbor_avg_recent_reviews_30d)} avg<br><strong>Review volume:</strong> ${escHtml(signals.review_volume_strength||"n/a")}<br><strong>Market pressure:</strong> ${escHtml(signals.market_pressure||"n/a")}`;
+        renderRecommendation(rec,signals);
+        renderSignals(signals);
         renderSteps(data.steps||[]);
         statusEl.textContent="Done";
       }catch(err){
