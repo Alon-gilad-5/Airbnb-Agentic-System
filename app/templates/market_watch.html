@@ -6,6 +6,153 @@
   <title>Market Watch</title>
   <link rel="stylesheet" href="/static/base.css">
   <style>
+    .calendar-shell { display:grid; gap:14px; }
+    .calendar-frame {
+      background:linear-gradient(180deg, #fbfdf8 0%, #f3f8ef 100%);
+      border:1px solid #d9e8cf;
+      border-radius:16px;
+      padding:16px;
+    }
+    .calendar-header {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+    }
+    .calendar-header h2 { margin:0; }
+    .calendar-header p { margin:4px 0 0 0; color:var(--muted); }
+    .calendar-legend {
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      color:var(--muted);
+      font-size:0.84rem;
+    }
+    .legend-chip {
+      width:14px;
+      height:14px;
+      border-radius:4px;
+      border:1px solid rgba(36, 84, 48, 0.08);
+    }
+    .legend-1 { background:#d9f3d3; }
+    .legend-2 { background:#a7df9a; }
+    .legend-3 { background:#5dab69; }
+    .legend-4 { background:#2f7d46; }
+    .calendar-weekdays,
+    .calendar-grid {
+      display:grid;
+      grid-template-columns:repeat(7, minmax(0, 1fr));
+      gap:8px;
+    }
+    .calendar-weekdays {
+      margin-bottom:8px;
+      color:var(--muted);
+      font-size:0.78rem;
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+    }
+    .calendar-weekdays span { padding:0 4px; }
+    .calendar-day {
+      min-height:76px;
+      border-radius:14px;
+      border:1px solid #d7e1d1;
+      background:#fff;
+      padding:10px;
+      text-align:left;
+      cursor:pointer;
+      transition:transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .calendar-day:hover {
+      transform:translateY(-1px);
+      box-shadow:0 8px 18px rgba(48, 82, 50, 0.08);
+    }
+    .calendar-day.today {
+      border-color:#2f7d46;
+      box-shadow:inset 0 0 0 1px rgba(47, 125, 70, 0.24);
+    }
+    .calendar-day.selected {
+      border-color:#1e5c31;
+      box-shadow:0 0 0 2px rgba(47, 125, 70, 0.16);
+    }
+    .calendar-day.has-events.intensity-1 { background:#dff5d8; }
+    .calendar-day.has-events.intensity-2 { background:#b8e7aa; }
+    .calendar-day.has-events.intensity-3 { background:#73bf7c; color:#103118; }
+    .calendar-day.has-events.intensity-4 { background:#2f7d46; color:#fff; border-color:#245430; }
+    .calendar-day.has-events.intensity-4 .calendar-day-meta,
+    .calendar-day.has-events.intensity-4 .calendar-day-week {
+      color:rgba(255,255,255,0.84);
+    }
+    .calendar-day-head {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .calendar-day-number {
+      font-size:1.1rem;
+      font-weight:700;
+      line-height:1;
+    }
+    .calendar-day-week {
+      font-size:0.75rem;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+    }
+    .calendar-day-meta {
+      font-size:0.84rem;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .calendar-day-meta strong {
+      display:block;
+      font-size:0.95rem;
+      color:inherit;
+    }
+    .calendar-detail {
+      background:#fff;
+      border:1px solid #d7e1d1;
+      border-radius:14px;
+      padding:14px 16px;
+    }
+    .calendar-detail h3 {
+      margin:0 0 4px 0;
+      font-size:1rem;
+      color:var(--ink);
+    }
+    .calendar-detail p {
+      margin:0;
+      color:var(--muted);
+      font-size:0.92rem;
+    }
+    .calendar-detail-list {
+      list-style:none;
+      margin:14px 0 0 0;
+      padding:0;
+      display:grid;
+      gap:10px;
+    }
+    .calendar-detail-item {
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:12px;
+      background:#fcfefd;
+    }
+    .calendar-detail-item strong {
+      display:block;
+      margin-bottom:4px;
+      color:var(--ink);
+    }
+    .calendar-detail-item span {
+      font-size:0.84rem;
+      color:var(--muted);
+    }
     .alerts-grid { display:grid; gap:12px; }
     .alert-card {
       background:var(--panel);
@@ -73,6 +220,17 @@
       vertical-align: top;
     }
     .nav-badge:empty { display: none; }
+    @media (max-width: 720px) {
+      .calendar-header { flex-direction:column; }
+      .calendar-weekdays,
+      .calendar-grid { gap:6px; }
+      .calendar-day {
+        min-height:68px;
+        padding:8px;
+      }
+      .calendar-day-number { font-size:1rem; }
+      .calendar-day-meta { font-size:0.78rem; }
+    }
   </style>
 </head>
 <body>
@@ -99,15 +257,51 @@
       </div>
     </section>
 
+    <section class="calendar-shell">
+      <div class="calendar-frame">
+        <div class="calendar-header">
+          <div>
+            <h2>Events Calendar</h2>
+            <p>14 days before today, today, and 14 days ahead. Darker green means more events on that date.</p>
+          </div>
+          <div class="calendar-legend" aria-label="Calendar intensity legend">
+            <span class="legend-chip legend-1" aria-hidden="true"></span><span>1</span>
+            <span class="legend-chip legend-2" aria-hidden="true"></span><span>2</span>
+            <span class="legend-chip legend-3" aria-hidden="true"></span><span>3-4</span>
+            <span class="legend-chip legend-4" aria-hidden="true"></span><span>5+</span>
+          </div>
+        </div>
+        <div class="calendar-weekdays" aria-hidden="true">
+          <span>Sun</span>
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+        </div>
+        <div id="eventsCalendar" class="calendar-grid"></div>
+      </div>
+      <div id="calendarDetail" class="calendar-detail">
+        <h3>Select a date</h3>
+        <p>Click any day to see which events land on that date.</p>
+        <ul id="calendarDetailList" class="calendar-detail-list"></ul>
+      </div>
+    </section>
+
     <div id="alertsList" class="alerts-grid"></div>
   </main>
 
   <script>
     const alertsEl = document.getElementById("alertsList");
+    const eventsCalendarEl = document.getElementById("eventsCalendar");
+    const calendarDetailEl = document.getElementById("calendarDetail");
     const statusEl = document.getElementById("status");
     const refreshBtn = document.getElementById("refreshBtn");
     const PROPERTY_PROFILE_STORAGE_KEY = "active_property_profile_id";
     let selectedProfile = null;
+    let allAlerts = [];
+    let selectedDateKey = null;
 
     function escHtml(s) {
       const d = document.createElement("div");
@@ -139,6 +333,157 @@
       if (!s) return "";
       if (!e || s === e) return s;
       return `${s} \u2013 ${e}`;
+    }
+
+    function parseIsoDate(iso) {
+      if (!iso) return null;
+      const parsed = new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function startOfDay(date) {
+      const value = new Date(date);
+      value.setHours(0, 0, 0, 0);
+      return value;
+    }
+
+    function addDays(date, days) {
+      const value = new Date(date);
+      value.setDate(value.getDate() + days);
+      return value;
+    }
+
+    function toDateKey(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatCalendarHeadline(dateKey) {
+      const [year, month, day] = dateKey.split("-");
+      return `${day}.${month}.${year}`;
+    }
+
+    function buildCalendarModel(alerts) {
+      const today = startOfDay(new Date());
+      const windowStart = addDays(today, -14);
+      const windowEnd = addDays(today, 14);
+      const byDate = new Map();
+
+      for (const alert of alerts || []) {
+        if ((alert.alert_type || "").toLowerCase() !== "event") continue;
+        const startDate = parseIsoDate(alert.start_at_utc);
+        if (!startDate) continue;
+
+        const startDay = startOfDay(startDate);
+        const endDay = startOfDay(parseIsoDate(alert.end_at_utc) || startDate);
+        const rangeStart = startDay < windowStart ? windowStart : startDay;
+        const rangeEnd = endDay > windowEnd ? windowEnd : endDay;
+        if (rangeEnd < windowStart || rangeStart > windowEnd) continue;
+
+        for (let cursor = new Date(rangeStart); cursor <= rangeEnd; cursor = addDays(cursor, 1)) {
+          const key = toDateKey(cursor);
+          if (!byDate.has(key)) byDate.set(key, []);
+          byDate.get(key).push(alert);
+        }
+      }
+
+      const days = [];
+      for (let offset = -14; offset <= 14; offset += 1) {
+        const date = addDays(today, offset);
+        const key = toDateKey(date);
+        days.push({
+          key,
+          date,
+          isToday: offset === 0,
+          alerts: byDate.get(key) || [],
+        });
+      }
+
+      return days;
+    }
+
+    function intensityClass(count) {
+      if (count >= 5) return "intensity-4";
+      if (count >= 3) return "intensity-3";
+      if (count >= 2) return "intensity-2";
+      if (count >= 1) return "intensity-1";
+      return "";
+    }
+
+    function renderCalendarDetail(dateKey, alertsForDate) {
+      const count = alertsForDate.length;
+      calendarDetailEl.innerHTML = `
+        <h3>${escHtml(formatCalendarHeadline(dateKey))}</h3>
+        <p>${count ? `${count} event${count === 1 ? "" : "s"} on this date.` : "No events on this date."}</p>
+      `;
+
+      const list = document.createElement("ul");
+      list.id = "calendarDetailList";
+      list.className = "calendar-detail-list";
+
+      if (!count) {
+        list.innerHTML = `<li class="calendar-detail-item"><strong>No scheduled events</strong><span>Pick another highlighted date to inspect the market activity.</span></li>`;
+      } else {
+        for (const alert of alertsForDate) {
+          const item = document.createElement("li");
+          item.className = "calendar-detail-item";
+          const detailBits = [];
+          if (alert.severity) detailBits.push(`${alert.severity} severity`);
+          if (alert.source_name) detailBits.push(alert.source_name);
+          if (alert.summary) detailBits.push(alert.summary);
+          item.innerHTML = `
+            <strong>${escHtml(alert.title || "Untitled event")}</strong>
+            <span>${escHtml(detailBits.join(" | "))}</span>
+          `;
+          list.appendChild(item);
+        }
+      }
+
+      calendarDetailEl.appendChild(list);
+    }
+
+    function renderCalendar(alerts) {
+      const days = buildCalendarModel(alerts);
+      const availableKeys = new Set(days.map((day) => day.key));
+      if (!selectedDateKey || !availableKeys.has(selectedDateKey)) {
+        selectedDateKey = toDateKey(startOfDay(new Date()));
+      }
+
+      eventsCalendarEl.innerHTML = "";
+      for (const day of days) {
+        const count = day.alerts.length;
+        const button = document.createElement("button");
+        const selected = day.key === selectedDateKey;
+        button.type = "button";
+        button.className = [
+          "calendar-day",
+          day.isToday ? "today" : "",
+          count ? `has-events ${intensityClass(count)}` : "",
+          selected ? "selected" : "",
+        ].filter(Boolean).join(" ");
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+        button.setAttribute("aria-label", `${formatCalendarHeadline(day.key)}${count ? `, ${count} events` : ", no events"}`);
+        button.innerHTML = `
+          <div class="calendar-day-head">
+            <span class="calendar-day-number">${day.date.getDate()}</span>
+            <span class="calendar-day-week">${day.date.toLocaleDateString(undefined, { weekday: "short" })}</span>
+          </div>
+          <div class="calendar-day-meta">
+            <strong>${day.date.toLocaleDateString(undefined, { month: "short" })}</strong>
+            <span>${count ? `${count} event${count === 1 ? "" : "s"}` : "No events"}</span>
+          </div>
+        `;
+        button.addEventListener("click", () => {
+          selectedDateKey = day.key;
+          renderCalendar(allAlerts);
+        });
+        eventsCalendarEl.appendChild(button);
+      }
+
+      const selectedDay = days.find((day) => day.key === selectedDateKey) || days[14];
+      renderCalendarDetail(selectedDay.key, selectedDay.alerts);
     }
 
     function buildRunPayload(profile) {
@@ -194,8 +539,10 @@
     }
 
     function renderAlerts(alerts) {
+      allAlerts = Array.isArray(alerts) ? alerts : [];
+      renderCalendar(allAlerts);
       alertsEl.innerHTML = "";
-      if (!alerts || !alerts.length) {
+      if (!allAlerts.length) {
         alertsEl.innerHTML = `
           <div class="card empty-state">
             <p><strong>No alerts yet</strong></p>
@@ -203,7 +550,7 @@
           </div>`;
         return;
       }
-      for (const a of alerts) {
+      for (const a of allAlerts) {
         const sev = (a.severity || "low").toLowerCase();
         const card = document.createElement("div");
         card.className = `alert-card severity-${sev}`;
