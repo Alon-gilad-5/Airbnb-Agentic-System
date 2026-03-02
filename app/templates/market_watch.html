@@ -121,43 +121,119 @@
       color:inherit;
     }
     .calendar-detail {
-      background:#fff;
+      background:linear-gradient(180deg, #ffffff 0%, #f8fbf7 100%);
       border:1px solid #d7e1d1;
-      border-radius:12px;
-      padding:12px 14px;
+      border-radius:14px;
+      padding:14px;
       min-height:100%;
+    }
+    .calendar-detail-header {
+      display:grid;
+      gap:4px;
+      padding-bottom:10px;
+      border-bottom:1px solid #dfe8da;
+      margin-bottom:12px;
     }
     .calendar-detail h3 {
       margin:0 0 4px 0;
-      font-size:0.95rem;
+      font-size:1.05rem;
       color:var(--ink);
     }
     .calendar-detail p {
       margin:0;
       color:var(--muted);
-      font-size:0.84rem;
+      font-size:0.88rem;
     }
     .calendar-detail-list {
       list-style:none;
       margin:10px 0 0 0;
       padding:0;
       display:grid;
-      gap:8px;
+      gap:10px;
     }
     .calendar-detail-item {
-      border:1px solid var(--border);
-      border-radius:10px;
-      padding:10px;
-      background:#fcfefd;
+      border:1px solid #c9d9cd;
+      border-left:4px solid #73bf7c;
+      border-radius:12px;
+      padding:12px;
+      background:#ffffff;
+      box-shadow:0 8px 18px rgba(49, 79, 47, 0.05);
     }
+    .calendar-detail-item.severity-high { border-left-color:#2f7d46; }
+    .calendar-detail-item.severity-medium { border-left-color:#73bf7c; }
+    .calendar-detail-item.severity-low { border-left-color:#c6e6c0; }
     .calendar-detail-item strong {
       display:block;
-      margin-bottom:4px;
+      margin-bottom:8px;
       color:var(--ink);
+      font-size:1rem;
+      line-height:1.35;
     }
-    .calendar-detail-item span {
-      font-size:0.8rem;
+    .detail-meta-row {
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      margin-bottom:10px;
+    }
+    .detail-chip {
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      padding:4px 8px;
+      border-radius:999px;
+      background:#edf6ea;
+      color:#345245;
+      font-size:0.74rem;
+      font-weight:700;
+      letter-spacing:0.01em;
+    }
+    .detail-stats {
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+      margin-bottom:10px;
+    }
+    .detail-stat {
+      border:1px solid #e1e9de;
+      border-radius:10px;
+      padding:8px 9px;
+      background:#fbfdfa;
+    }
+    .detail-stat-label {
+      display:block;
+      margin-bottom:3px;
+      font-size:0.7rem;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+      color:#66806f;
+    }
+    .detail-stat-value {
+      font-size:0.88rem;
+      font-weight:700;
+      color:#203129;
+      line-height:1.25;
+    }
+    .detail-description {
+      font-size:0.87rem;
+      line-height:1.6;
       color:var(--muted);
+      margin:0;
+    }
+    .detail-link {
+      display:inline-block;
+      margin-top:10px;
+      color:var(--accent2);
+      text-decoration:none;
+      font-size:0.82rem;
+      font-weight:700;
+    }
+    .detail-link:hover { text-decoration:underline; }
+    .calendar-placeholder {
+      min-height:52px;
+      border-radius:10px;
+      border:1px dashed rgba(96, 126, 96, 0.18);
+      background:rgba(255,255,255,0.38);
     }
     .row { display:flex; gap:10px; align-items:center; margin-top:10px; }
     .nav a { position: relative; }
@@ -188,6 +264,7 @@
       }
       .calendar-day-number { font-size:0.9rem; }
       .calendar-day-meta { font-size:0.68rem; }
+      .detail-stats { grid-template-columns:1fr; }
     }
   </style>
 </head>
@@ -220,7 +297,7 @@
         <div class="calendar-header">
           <div>
             <h2>Calendar</h2>
-            <p>14 days before today, today, and 14 days ahead. Darker green means more events on that date.</p>
+            <p>Today and the next 29 days. Darker green means more events on that date.</p>
           </div>
           <div class="calendar-legend" aria-label="Calendar intensity legend">
             <span class="legend-chip legend-1" aria-hidden="true"></span><span>1</span>
@@ -241,8 +318,10 @@
         <div id="eventsCalendar" class="calendar-grid"></div>
       </div>
       <div id="calendarDetail" class="calendar-detail">
-        <h3>Events On This Date</h3>
-        <p>Click any day in the calendar to inspect the events mapped to that date.</p>
+        <div class="calendar-detail-header">
+          <h3>Events On This Date</h3>
+          <p>Click any day in the calendar to inspect the events mapped to that date.</p>
+        </div>
         <ul id="calendarDetailList" class="calendar-detail-list"></ul>
       </div>
     </section>
@@ -324,10 +403,43 @@
       return `${day}.${month}.${year}`;
     }
 
+    function formatEventTime(iso) {
+      const date = parseIsoDate(iso);
+      if (!date) return "Time unavailable";
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function titleToEventName(title) {
+      if (!title) return "Untitled event";
+      return String(title).replace(/^Nearby\s+\w+-impact event:\s*/i, "").trim() || String(title);
+    }
+
+    function formatDistanceKm(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return "Unknown";
+      return `${numeric.toFixed(1)} km`;
+    }
+
+    function formatImpactLabel(score) {
+      const numeric = Number(score);
+      if (!Number.isFinite(numeric)) return "Standard";
+      if (numeric >= 4) return "High";
+      if (numeric >= 3) return "Medium";
+      return "Low";
+    }
+
+    function formatCrowdEstimate(alert) {
+      const crowd = alert?.evidence?.approx_attendance;
+      if (crowd !== null && crowd !== undefined && String(crowd).trim()) {
+        return String(crowd);
+      }
+      return "Not provided";
+    }
+
     function buildCalendarModel(alerts) {
       const today = startOfDay(new Date());
-      const windowStart = addDays(today, -14);
-      const windowEnd = addDays(today, 14);
+      const windowStart = today;
+      const windowEnd = addDays(today, 29);
       const byDate = new Map();
 
       for (const alert of alerts || []) {
@@ -349,7 +461,11 @@
       }
 
       const days = [];
-      for (let offset = -14; offset <= 14; offset += 1) {
+      const leadingEmptyDays = today.getDay();
+      for (let index = 0; index < leadingEmptyDays; index += 1) {
+        days.push({ empty: true, key: `empty-${index}` });
+      }
+      for (let offset = 0; offset < 30; offset += 1) {
         const date = addDays(today, offset);
         const key = toDateKey(date);
         days.push({
@@ -372,10 +488,20 @@
     }
 
     function renderCalendarDetail(dateKey, alertsForDate) {
-      const count = alertsForDate.length;
+      const sortedAlerts = [...alertsForDate].sort((left, right) => {
+        const leftScore = Number(left?.evidence?.impact_score || 0);
+        const rightScore = Number(right?.evidence?.impact_score || 0);
+        if (rightScore !== leftScore) return rightScore - leftScore;
+        const leftDistance = Number(left?.evidence?.distance_km || Number.POSITIVE_INFINITY);
+        const rightDistance = Number(right?.evidence?.distance_km || Number.POSITIVE_INFINITY);
+        return leftDistance - rightDistance;
+      });
+      const count = sortedAlerts.length;
       calendarDetailEl.innerHTML = `
-        <h3>${escHtml(formatCalendarHeadline(dateKey))}</h3>
-        <p>${count ? `${count} event${count === 1 ? "" : "s"} on this date.` : "No events on this date."}</p>
+        <div class="calendar-detail-header">
+          <h3>${escHtml(formatCalendarHeadline(dateKey))}</h3>
+          <p>${count ? `${count} event${count === 1 ? "" : "s"} on this date.` : "No events on this date."}</p>
+        </div>
       `;
 
       const list = document.createElement("ul");
@@ -383,18 +509,54 @@
       list.className = "calendar-detail-list";
 
       if (!count) {
-        list.innerHTML = `<li class="calendar-detail-item"><strong>No scheduled events</strong><span>Pick another highlighted date to inspect the market activity.</span></li>`;
+        list.innerHTML = `<li class="calendar-detail-item"><strong>No scheduled events</strong><p class="detail-description">Pick another highlighted date to inspect the market activity.</p></li>`;
       } else {
-        for (const alert of alertsForDate) {
+        for (const alert of sortedAlerts) {
           const item = document.createElement("li");
-          item.className = "calendar-detail-item";
-          const detailBits = [];
-          if (alert.severity) detailBits.push(`${alert.severity} severity`);
-          if (alert.source_name) detailBits.push(alert.source_name);
-          if (alert.summary) detailBits.push(alert.summary);
+          const severity = String(alert.severity || "medium").toLowerCase();
+          const category = alert?.evidence?.category || "General";
+          const city = alert.city || selectedProfile?.city || "Location unavailable";
+          const distance = formatDistanceKm(alert?.evidence?.distance_km);
+          const impact = formatImpactLabel(alert?.evidence?.impact_score);
+          const time = formatEventTime(alert.start_at_utc);
+          const crowd = formatCrowdEstimate(alert);
+          const eventName = titleToEventName(alert.title);
+          item.className = `calendar-detail-item severity-${severity}`;
           item.innerHTML = `
-            <strong>${escHtml(alert.title || "Untitled event")}</strong>
-            <span>${escHtml(detailBits.join(" | "))}</span>
+            <strong>${escHtml(eventName)}</strong>
+            <div class="detail-meta-row">
+              <span class="detail-chip">${escHtml(severity.toUpperCase())}</span>
+              <span class="detail-chip">${escHtml(category)}</span>
+              <span class="detail-chip">${escHtml(alert.source_name || "Source unavailable")}</span>
+            </div>
+            <div class="detail-stats">
+              <div class="detail-stat">
+                <span class="detail-stat-label">Location</span>
+                <span class="detail-stat-value">${escHtml(city)}</span>
+              </div>
+              <div class="detail-stat">
+                <span class="detail-stat-label">Distance</span>
+                <span class="detail-stat-value">${escHtml(distance)}</span>
+              </div>
+              <div class="detail-stat">
+                <span class="detail-stat-label">Start Time</span>
+                <span class="detail-stat-value">${escHtml(time)}</span>
+              </div>
+              <div class="detail-stat">
+                <span class="detail-stat-label">Demand Signal</span>
+                <span class="detail-stat-value">${escHtml(impact)}</span>
+              </div>
+              <div class="detail-stat">
+                <span class="detail-stat-label">Crowd Estimate</span>
+                <span class="detail-stat-value">${escHtml(crowd)}</span>
+              </div>
+              <div class="detail-stat">
+                <span class="detail-stat-label">Description</span>
+                <span class="detail-stat-value">${escHtml(category)} event near your property</span>
+              </div>
+            </div>
+            <p class="detail-description">${escHtml(alert.summary || "No extra description available.")}</p>
+            ${alert.source_url ? `<a class="detail-link" href="${escHtml(alert.source_url)}" target="_blank" rel="noopener">Open source</a>` : ""}
           `;
           list.appendChild(item);
         }
@@ -405,13 +567,20 @@
 
     function renderCalendar(alerts) {
       const days = buildCalendarModel(alerts);
-      const availableKeys = new Set(days.map((day) => day.key));
+      const availableKeys = new Set(days.filter((day) => !day.empty).map((day) => day.key));
       if (!selectedDateKey || !availableKeys.has(selectedDateKey)) {
         selectedDateKey = toDateKey(startOfDay(new Date()));
       }
 
       eventsCalendarEl.innerHTML = "";
       for (const day of days) {
+        if (day.empty) {
+          const placeholder = document.createElement("div");
+          placeholder.className = "calendar-placeholder";
+          placeholder.setAttribute("aria-hidden", "true");
+          eventsCalendarEl.appendChild(placeholder);
+          continue;
+        }
         const count = day.alerts.length;
         const button = document.createElement("button");
         const selected = day.key === selectedDateKey;
@@ -441,7 +610,7 @@
         eventsCalendarEl.appendChild(button);
       }
 
-      const selectedDay = days.find((day) => day.key === selectedDateKey) || days[14];
+      const selectedDay = days.find((day) => !day.empty && day.key === selectedDateKey) || days.find((day) => !day.empty);
       renderCalendarDetail(selectedDay.key, selectedDay.alerts);
     }
 
