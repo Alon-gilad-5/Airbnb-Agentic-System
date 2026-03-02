@@ -219,10 +219,18 @@
     function escHtml(str){const d=document.createElement("div");d.textContent=str||"";return d.innerHTML;}
     function jsonHighlighted(obj){const json=JSON.stringify(obj??{},null,2);return escHtml(json).replace(/("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,(match)=>{let cls="n";if(/^"/.test(match))cls=/:$/.test(match)?"k":"s";else if(/true|false/.test(match))cls="b";else if(/null/.test(match))cls="nl";return `<span class="${cls}">${match}</span>`;});}
     function formatNumber(value){if(value===null||value===undefined||value==="")return"n/a";const num=Number(value);if(!Number.isFinite(num))return String(value);if(Math.abs(num-Math.round(num))<1e-9)return String(Math.round(num));return num.toFixed(2);}
+    async function readJsonResponse(res){
+      const text=await res.text();
+      try{return JSON.parse(text);}
+      catch(err){
+        const snippet=(text||"").replace(/\s+/g," ").trim().slice(0,180);
+        throw new Error(snippet||`Unexpected non-JSON response (HTTP ${res.status})`);
+      }
+    }
 
     /* ── Property profiles ── */
     function setSelectedPropertyProfile(profileId){if(!profileId||!propertyProfilesById.has(profileId)){selectedPropertyProfile=null;return;}selectedPropertyProfile=propertyProfilesById.get(profileId)||null;propertyProfileEl.value=profileId;try{localStorage.setItem(PROPERTY_PROFILE_STORAGE_KEY,profileId);}catch(err){}}
-    async function loadPropertyProfiles(){propertyProfileEl.innerHTML='<option value="primary">Primary</option>';propertyProfilesById=new Map();selectedPropertyProfile=null;try{const res=await fetch("/api/property_profiles");const data=await res.json();const profiles=Array.isArray(data.profiles)?data.profiles:[];if(!profiles.length)return false;propertyProfileEl.innerHTML="";for(const profile of profiles){if(!profile||typeof profile.profile_id!=="string")continue;propertyProfilesById.set(profile.profile_id,profile);const opt=document.createElement("option");opt.value=profile.profile_id;opt.textContent=profile.property_name||profile.property_id||profile.profile_id;propertyProfileEl.appendChild(opt);}const defaultProfileId=typeof data.default_profile_id==="string"?data.default_profile_id:profiles[0].profile_id;let storedProfileId=null;try{storedProfileId=localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);}catch(err){storedProfileId=null;}const selectedId=storedProfileId&&propertyProfilesById.has(storedProfileId)?storedProfileId:defaultProfileId;setSelectedPropertyProfile(selectedId);return true;}catch(err){selectedPropertyProfile=null;return false;}}
+    async function loadPropertyProfiles(){propertyProfileEl.innerHTML='<option value="primary">Primary</option>';propertyProfilesById=new Map();selectedPropertyProfile=null;try{const res=await fetch("/api/property_profiles");const data=await readJsonResponse(res);const profiles=Array.isArray(data.profiles)?data.profiles:[];if(!profiles.length)return false;propertyProfileEl.innerHTML="";for(const profile of profiles){if(!profile||typeof profile.profile_id!=="string")continue;propertyProfilesById.set(profile.profile_id,profile);const opt=document.createElement("option");opt.value=profile.profile_id;opt.textContent=profile.property_name||profile.property_id||profile.profile_id;propertyProfileEl.appendChild(opt);}const defaultProfileId=typeof data.default_profile_id==="string"?data.default_profile_id:profiles[0].profile_id;let storedProfileId=null;try{storedProfileId=localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);}catch(err){storedProfileId=null;}const selectedId=storedProfileId&&propertyProfilesById.has(storedProfileId)?storedProfileId:defaultProfileId;setSelectedPropertyProfile(selectedId);return true;}catch(err){selectedPropertyProfile=null;return false;}}
 
     /* ── Composer condense ── */
     function setComposerCondensed(condensed){
@@ -509,7 +517,7 @@
     }
 
     /* ── Explain selection ── */
-    async function explainActiveSelection(){if(!analysisState.activeSelection||!selectedPropertyProfile||!selectedPropertyProfile.property_id)return;selectionExplainStatusEl.textContent="Explaining...";selectionExplanationEl.textContent="Working...";selectionExplanationEl.classList.remove("empty-note");explainSelectionBtn.disabled=true;try{const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";const res=await fetch("/api/analysis/explain-selection",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:selectedPropertyProfile.property_id,prompt:analysisState.latestPrompt,category:analysisState.analysisCategory,selection_type:analysisState.activeSelection.request.selection_type,metric_column:analysisState.activeSelection.request.metric_column,selection_payload:analysisState.activeSelection.request.selection_payload,llm_provider:provider})});const data=await res.json();if(data.status==="error"){selectionExplanationEl.textContent=data.error||"Explanation failed.";selectionExplainStatusEl.textContent="Failed";}else{selectionExplanationEl.textContent=data.response||"No explanation returned.";selectionExplainStatusEl.textContent="Done";}}catch(err){selectionExplanationEl.textContent=String(err);selectionExplainStatusEl.textContent="Failed";}finally{explainSelectionBtn.disabled=false;}}
+    async function explainActiveSelection(){if(!analysisState.activeSelection||!selectedPropertyProfile||!selectedPropertyProfile.property_id)return;selectionExplainStatusEl.textContent="Explaining...";selectionExplanationEl.textContent="Working...";selectionExplanationEl.classList.remove("empty-note");explainSelectionBtn.disabled=true;try{const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";const res=await fetch("/api/analysis/explain-selection",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:selectedPropertyProfile.property_id,prompt:analysisState.latestPrompt,category:analysisState.analysisCategory,selection_type:analysisState.activeSelection.request.selection_type,metric_column:analysisState.activeSelection.request.metric_column,selection_payload:analysisState.activeSelection.request.selection_payload,llm_provider:provider})});const data=await readJsonResponse(res);if(data.status==="error"){selectionExplanationEl.textContent=data.error||"Explanation failed.";selectionExplainStatusEl.textContent="Failed";}else{selectionExplanationEl.textContent=data.response||"No explanation returned.";selectionExplainStatusEl.textContent="Done";}}catch(err){selectionExplanationEl.textContent=String(err);selectionExplainStatusEl.textContent="Failed";}finally{explainSelectionBtn.disabled=false;}}
 
     /* ── Run analysis ── */
     async function runAnalysis(options={}){
@@ -519,6 +527,7 @@
       const effectivePrompt=existingPrompt||DEFAULT_ANALYSIS_PROMPT;
       const requestPayload={property_id:selectedPropertyProfile.property_id,llm_provider:provider};
       if(existingPrompt){requestPayload.prompt=existingPrompt;}
+      else{requestPayload.category="review_scores";}
       try{localStorage.setItem(LLM_PROVIDER_STORAGE_KEY,provider);}catch(err){}
       runBtn.disabled=true;statusEl.innerHTML='<span class="inline-spinner" aria-hidden="true"></span> Running...';
       narrativeEl.textContent="Working...";narrativeEl.classList.add("empty-note");narrativeToggleEl.hidden=true;
@@ -527,7 +536,7 @@
       stepsEl.innerHTML="";analysisSummaryEl.classList.remove("visible");analysisAnswerEl.classList.remove("visible");resetSelectionDrawer();
       try{
         const res=await fetch("/api/analysis",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(requestPayload)});
-        const data=await res.json();
+        const data=await readJsonResponse(res);
         if(data.status==="error"){
           narrativeEl.textContent=data.error||"Analysis failed.";narrativeEl.classList.add("empty-note");narrativeToggleEl.hidden=true;
           numericWrapEl.innerHTML='<p class="empty-note">No numeric comparison data.</p>';numericLegendEl.innerHTML="";
