@@ -6,33 +6,37 @@
   <title>Market Watch</title>
   <link rel="stylesheet" href="/static/base.css">
   <style>
-    .calendar-shell { display:grid; gap:14px; }
+    .calendar-shell {
+      display:grid;
+      gap:10px;
+      max-width:760px;
+    }
     .calendar-frame {
       background:linear-gradient(180deg, #fbfdf8 0%, #f3f8ef 100%);
       border:1px solid #d9e8cf;
-      border-radius:16px;
-      padding:16px;
+      border-radius:14px;
+      padding:12px;
     }
     .calendar-header {
       display:flex;
       align-items:flex-start;
       justify-content:space-between;
-      gap:12px;
-      margin-bottom:14px;
+      gap:10px;
+      margin-bottom:10px;
     }
     .calendar-header h2 { margin:0; }
-    .calendar-header p { margin:4px 0 0 0; color:var(--muted); }
+    .calendar-header p { margin:3px 0 0 0; color:var(--muted); font-size:0.85rem; }
     .calendar-legend {
       display:flex;
       align-items:center;
       gap:8px;
       flex-wrap:wrap;
       color:var(--muted);
-      font-size:0.84rem;
+      font-size:0.76rem;
     }
     .legend-chip {
-      width:14px;
-      height:14px;
+      width:11px;
+      height:11px;
       border-radius:4px;
       border:1px solid rgba(36, 84, 48, 0.08);
     }
@@ -44,29 +48,29 @@
     .calendar-grid {
       display:grid;
       grid-template-columns:repeat(7, minmax(0, 1fr));
-      gap:8px;
+      gap:5px;
     }
     .calendar-weekdays {
-      margin-bottom:8px;
+      margin-bottom:5px;
       color:var(--muted);
-      font-size:0.78rem;
+      font-size:0.68rem;
       text-transform:uppercase;
       letter-spacing:0.05em;
     }
     .calendar-weekdays span { padding:0 4px; }
     .calendar-day {
-      min-height:76px;
-      border-radius:14px;
+      min-height:52px;
+      border-radius:10px;
       border:1px solid #d7e1d1;
       background:#fff;
-      padding:10px;
+      padding:7px 8px;
       text-align:left;
       cursor:pointer;
       transition:transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
       display:flex;
       flex-direction:column;
       justify-content:space-between;
-      gap:8px;
+      gap:4px;
     }
     .calendar-day:hover {
       transform:translateY(-1px);
@@ -95,53 +99,53 @@
       gap:8px;
     }
     .calendar-day-number {
-      font-size:1.1rem;
+      font-size:0.95rem;
       font-weight:700;
       line-height:1;
     }
     .calendar-day-week {
-      font-size:0.75rem;
+      font-size:0.64rem;
       color:var(--muted);
       text-transform:uppercase;
       letter-spacing:0.05em;
     }
     .calendar-day-meta {
-      font-size:0.84rem;
+      font-size:0.7rem;
       color:var(--muted);
-      line-height:1.35;
+      line-height:1.2;
     }
     .calendar-day-meta strong {
-      display:block;
-      font-size:0.95rem;
+      display:none;
+      font-size:0.9rem;
       color:inherit;
     }
     .calendar-detail {
       background:#fff;
       border:1px solid #d7e1d1;
-      border-radius:14px;
-      padding:14px 16px;
+      border-radius:12px;
+      padding:12px 14px;
     }
     .calendar-detail h3 {
       margin:0 0 4px 0;
-      font-size:1rem;
+      font-size:0.95rem;
       color:var(--ink);
     }
     .calendar-detail p {
       margin:0;
       color:var(--muted);
-      font-size:0.92rem;
+      font-size:0.84rem;
     }
     .calendar-detail-list {
       list-style:none;
-      margin:14px 0 0 0;
+      margin:10px 0 0 0;
       padding:0;
       display:grid;
-      gap:10px;
+      gap:8px;
     }
     .calendar-detail-item {
       border:1px solid var(--border);
-      border-radius:12px;
-      padding:12px;
+      border-radius:10px;
+      padding:10px;
       background:#fcfefd;
     }
     .calendar-detail-item strong {
@@ -150,7 +154,7 @@
       color:var(--ink);
     }
     .calendar-detail-item span {
-      font-size:0.84rem;
+      font-size:0.8rem;
       color:var(--muted);
     }
     .alerts-grid { display:grid; gap:12px; }
@@ -225,11 +229,11 @@
       .calendar-weekdays,
       .calendar-grid { gap:6px; }
       .calendar-day {
-        min-height:68px;
-        padding:8px;
+        min-height:50px;
+        padding:6px;
       }
-      .calendar-day-number { font-size:1rem; }
-      .calendar-day-meta { font-size:0.78rem; }
+      .calendar-day-number { font-size:0.9rem; }
+      .calendar-day-meta { font-size:0.68rem; }
     }
   </style>
 </head>
@@ -312,7 +316,8 @@
     function formatDate(iso) {
       if (!iso) return null;
       try {
-        const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+        const d = parseIsoDate(iso);
+        if (!d) return iso;
         if (isNaN(d.getTime())) return iso;
         const now = new Date();
         const diffMs = d.getTime() - now.getTime();
@@ -337,8 +342,11 @@
 
     function parseIsoDate(iso) {
       if (!iso) return null;
-      const parsed = new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
-      return isNaN(parsed.getTime()) ? null : parsed;
+      const direct = new Date(iso);
+      if (!isNaN(direct.getTime())) return direct;
+      const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/.test(iso);
+      const fallback = new Date(hasTimezone ? iso : `${iso}Z`);
+      return isNaN(fallback.getTime()) ? null : fallback;
     }
 
     function startOfDay(date) {
@@ -472,7 +480,7 @@
           </div>
           <div class="calendar-day-meta">
             <strong>${day.date.toLocaleDateString(undefined, { month: "short" })}</strong>
-            <span>${count ? `${count} event${count === 1 ? "" : "s"}` : "No events"}</span>
+            <span>${count ? `${count} evt` : "-"}</span>
           </div>
         `;
         button.addEventListener("click", () => {
