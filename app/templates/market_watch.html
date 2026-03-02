@@ -9,7 +9,8 @@
     .calendar-shell {
       display:grid;
       gap:10px;
-      max-width:760px;
+      grid-template-columns:minmax(0, 1.5fr) minmax(260px, 0.9fr);
+      align-items:start;
     }
     .calendar-frame {
       background:linear-gradient(180deg, #fbfdf8 0%, #f3f8ef 100%);
@@ -124,6 +125,7 @@
       border:1px solid #d7e1d1;
       border-radius:12px;
       padding:12px 14px;
+      min-height:100%;
     }
     .calendar-detail h3 {
       margin:0 0 4px 0;
@@ -157,56 +159,7 @@
       font-size:0.8rem;
       color:var(--muted);
     }
-    .alerts-grid { display:grid; gap:12px; }
-    .alert-card {
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:12px;
-      border-left:4px solid var(--accent);
-      padding:14px 16px;
-      transition: box-shadow 0.15s ease;
-    }
-    .alert-card:hover { box-shadow:0 2px 10px rgba(0,0,0,0.06); }
-    .alert-card.severity-high   { border-left-color:var(--danger); }
-    .alert-card.severity-medium { border-left-color:var(--warn); }
-    .alert-card.severity-low    { border-left-color:var(--accent); }
-    .alert-header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
-    .badge {
-      font-size:0.75rem; font-weight:600; border-radius:999px; padding:2px 10px;
-      text-transform:uppercase; letter-spacing:0.03em;
-    }
-    .badge-high   { background:#fee2e2; color:#991b1b; }
-    .badge-medium { background:#fef3c7; color:#92400e; }
-    .badge-low    { background:#d1fae5; color:#065f46; }
-    .badge-type {
-      font-size:0.75rem; font-weight:600; border-radius:999px; padding:2px 10px;
-      background:#dbeafe; color:#1e40af;
-    }
-    .alert-title { font-weight:700; font-size:1.05rem; margin:0 0 4px 0; color:var(--ink); }
-    .alert-meta { font-size:0.85rem; color:var(--muted); margin-bottom:6px; }
-    .alert-meta span + span::before { content:"\00b7"; margin:0 6px; }
-    .alert-summary { font-size:0.95rem; line-height:1.55; color:var(--ink); margin:0; }
-    .alert-footer { margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .source-link {
-      font-size:0.85rem; color:var(--accent2); text-decoration:none; font-weight:600;
-    }
-    .source-link:hover { text-decoration:underline; }
-    .evidence-toggle {
-      background:none; border:1px solid var(--border); color:var(--accent2);
-      font-size:0.82rem; padding:4px 12px; border-radius:8px; cursor:pointer; font-weight:600;
-    }
-    .evidence-toggle:hover { background:#f0f5fa; }
-    .evidence-panel {
-      display:none; margin-top:10px; background:#f8fbfe; border:1px solid var(--border);
-      border-radius:10px; padding:12px; overflow:auto; white-space:pre-wrap;
-      word-break:break-word; font-size:0.85rem; font-family:monospace; color:var(--muted);
-    }
-    .evidence-panel.open { display:block; }
     .row { display:flex; gap:10px; align-items:center; margin-top:10px; }
-    .empty-state {
-      text-align:center; padding:40px 20px; color:var(--muted); font-size:1rem;
-    }
-    .empty-state p { margin:8px 0; }
     .nav a { position: relative; }
     .nav-badge {
       background: var(--danger);
@@ -225,6 +178,7 @@
     }
     .nav-badge:empty { display: none; }
     @media (max-width: 720px) {
+      .calendar-shell { grid-template-columns:1fr; }
       .calendar-header { flex-direction:column; }
       .calendar-weekdays,
       .calendar-grid { gap:6px; }
@@ -253,7 +207,7 @@
 
     <section class="card">
       <div class="row" style="margin-top:0; justify-content:space-between;">
-        <h2 style="margin:0;">Alerts</h2>
+        <h2 style="margin:0;">Events Calendar</h2>
         <div class="row" style="margin-top:0;">
           <span id="status" class="muted">Loading...</span>
           <button id="refreshBtn" class="secondary" style="padding:6px 14px; font-size:0.9rem;">Refresh</button>
@@ -265,7 +219,7 @@
       <div class="calendar-frame">
         <div class="calendar-header">
           <div>
-            <h2>Events Calendar</h2>
+            <h2>Calendar</h2>
             <p>14 days before today, today, and 14 days ahead. Darker green means more events on that date.</p>
           </div>
           <div class="calendar-legend" aria-label="Calendar intensity legend">
@@ -287,17 +241,14 @@
         <div id="eventsCalendar" class="calendar-grid"></div>
       </div>
       <div id="calendarDetail" class="calendar-detail">
-        <h3>Select a date</h3>
-        <p>Click any day to see which events land on that date.</p>
+        <h3>Events On This Date</h3>
+        <p>Click any day in the calendar to inspect the events mapped to that date.</p>
         <ul id="calendarDetailList" class="calendar-detail-list"></ul>
       </div>
     </section>
-
-    <div id="alertsList" class="alerts-grid"></div>
   </main>
 
   <script>
-    const alertsEl = document.getElementById("alertsList");
     const eventsCalendarEl = document.getElementById("eventsCalendar");
     const calendarDetailEl = document.getElementById("calendarDetail");
     const statusEl = document.getElementById("status");
@@ -549,52 +500,6 @@
     function renderAlerts(alerts) {
       allAlerts = Array.isArray(alerts) ? alerts : [];
       renderCalendar(allAlerts);
-      alertsEl.innerHTML = "";
-      if (!allAlerts.length) {
-        alertsEl.innerHTML = `
-          <div class="card empty-state">
-            <p><strong>No alerts yet</strong></p>
-            <p>The market watch agent checks periodically for weather, events, and demand signals relevant to your property.</p>
-          </div>`;
-        return;
-      }
-      for (const a of allAlerts) {
-        const sev = (a.severity || "low").toLowerCase();
-        const card = document.createElement("div");
-        card.className = `alert-card severity-${sev}`;
-
-        const dateRange = formatRange(a.start_at_utc, a.end_at_utc);
-        const metaParts = [];
-        if (dateRange) metaParts.push(dateRange);
-        if (a.source_name) metaParts.push(a.source_name);
-        if (a.city) metaParts.push(a.city);
-
-        let footerHtml = "";
-        const footerParts = [];
-        if (a.source_url) {
-          footerParts.push(`<a class="source-link" href="${escHtml(a.source_url)}" target="_blank" rel="noopener">View source</a>`);
-        }
-        if (a.evidence && Object.keys(a.evidence).length) {
-          const evidenceId = `ev-${a.id}`;
-          footerParts.push(`<button class="evidence-toggle" onclick="document.getElementById('${evidenceId}').classList.toggle('open'); this.textContent = document.getElementById('${evidenceId}').classList.contains('open') ? 'Hide details' : 'Show details'">Show details</button>`);
-          footerParts.push(`<div id="${evidenceId}" class="evidence-panel">${escHtml(JSON.stringify(a.evidence, null, 2))}</div>`);
-        }
-        if (footerParts.length) {
-          footerHtml = `<div class="alert-footer">${footerParts.join("\n")}</div>`;
-        }
-
-        card.innerHTML = `
-          <div class="alert-header">
-            <span class="badge badge-${sev}">${escHtml(sev)}</span>
-            <span class="badge-type">${escHtml(a.alert_type || "alert")}</span>
-          </div>
-          <div class="alert-title">${escHtml(a.title)}</div>
-          ${metaParts.length ? `<div class="alert-meta">${metaParts.map(m => `<span>${escHtml(m)}</span>`).join("")}</div>` : ""}
-          <p class="alert-summary">${escHtml(a.summary)}</p>
-          ${footerHtml}
-        `;
-        alertsEl.appendChild(card);
-      }
     }
 
     async function runMarketWatch(profile) {
@@ -621,7 +526,6 @@
         const res = await fetch(`/api/market_watch/alerts?${query}`);
         const data = await res.json();
         if (data.status === "error") {
-          alertsEl.innerHTML = `<div class="status-banner error">${escHtml(data.error || "Unknown error")}</div>`;
           statusEl.textContent = "Error";
           return;
         }
@@ -639,7 +543,6 @@
         }
         statusEl.textContent = n ? `${n} alert${n > 1 ? "s" : ""}${propertyLabel}` : `No alerts${propertyLabel}`;
       } catch (err) {
-        alertsEl.innerHTML = `<div class="status-banner error">${escHtml(String(err))}</div>`;
         statusEl.textContent = "Failed";
       }
     }
