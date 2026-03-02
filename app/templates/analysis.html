@@ -209,7 +209,7 @@
     const numericSectionEl=document.getElementById("numericSection"),categoricalSectionEl=document.getElementById("categoricalSection"),narrativeSectionEl=document.getElementById("narrativeSection"),narrativeToggleEl=document.getElementById("narrativeToggle"),selectionDrawerEl=document.getElementById("selectionDrawer");
     const technicalTraceSectionEl=document.getElementById("technicalTraceSection"),traceCountEl=document.getElementById("traceCount"),numericLegendEl=document.getElementById("numericLegend"),chartTooltipEl=document.getElementById("chartTooltip");
 
-    const LLM_PROVIDER_STORAGE_KEY="analysis_console_llm_provider",PROPERTY_PROFILE_STORAGE_KEY="active_property_profile_id",allowedProviders=new Set(["default","llmod","openrouter"]);
+    const LLM_PROVIDER_STORAGE_KEY="analysis_console_llm_provider",PROPERTY_PROFILE_STORAGE_KEY="active_property_profile_id",DEFAULT_ANALYSIS_PROMPT="How are my review scores compared to my neighbors?",allowedProviders=new Set(["default","llmod","openrouter"]);
     const analysisState={latestPrompt:"",analysisCategory:null,numericByColumn:new Map(),categoricalByColumn:new Map(),activeSelection:null,fullNarrative:"",narrativeExpanded:false,composerExpanded:true};
     let propertyProfilesById=new Map(),selectedPropertyProfile=null;
 
@@ -222,7 +222,7 @@
 
     /* ── Property profiles ── */
     function setSelectedPropertyProfile(profileId){if(!profileId||!propertyProfilesById.has(profileId)){selectedPropertyProfile=null;return;}selectedPropertyProfile=propertyProfilesById.get(profileId)||null;propertyProfileEl.value=profileId;try{localStorage.setItem(PROPERTY_PROFILE_STORAGE_KEY,profileId);}catch(err){}}
-    async function loadPropertyProfiles(){propertyProfileEl.innerHTML='<option value="primary">Primary</option>';propertyProfilesById=new Map();selectedPropertyProfile=null;try{const res=await fetch("/api/property_profiles");const data=await res.json();const profiles=Array.isArray(data.profiles)?data.profiles:[];if(!profiles.length)return;propertyProfileEl.innerHTML="";for(const profile of profiles){if(!profile||typeof profile.profile_id!=="string")continue;propertyProfilesById.set(profile.profile_id,profile);const opt=document.createElement("option");opt.value=profile.profile_id;opt.textContent=profile.property_name||profile.property_id||profile.profile_id;propertyProfileEl.appendChild(opt);}const defaultProfileId=typeof data.default_profile_id==="string"?data.default_profile_id:profiles[0].profile_id;let storedProfileId=null;try{storedProfileId=localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);}catch(err){storedProfileId=null;}const selectedId=storedProfileId&&propertyProfilesById.has(storedProfileId)?storedProfileId:defaultProfileId;setSelectedPropertyProfile(selectedId);}catch(err){selectedPropertyProfile=null;}}
+    async function loadPropertyProfiles(){propertyProfileEl.innerHTML='<option value="primary">Primary</option>';propertyProfilesById=new Map();selectedPropertyProfile=null;try{const res=await fetch("/api/property_profiles");const data=await res.json();const profiles=Array.isArray(data.profiles)?data.profiles:[];if(!profiles.length)return false;propertyProfileEl.innerHTML="";for(const profile of profiles){if(!profile||typeof profile.profile_id!=="string")continue;propertyProfilesById.set(profile.profile_id,profile);const opt=document.createElement("option");opt.value=profile.profile_id;opt.textContent=profile.property_name||profile.property_id||profile.profile_id;propertyProfileEl.appendChild(opt);}const defaultProfileId=typeof data.default_profile_id==="string"?data.default_profile_id:profiles[0].profile_id;let storedProfileId=null;try{storedProfileId=localStorage.getItem(PROPERTY_PROFILE_STORAGE_KEY);}catch(err){storedProfileId=null;}const selectedId=storedProfileId&&propertyProfilesById.has(storedProfileId)?storedProfileId:defaultProfileId;setSelectedPropertyProfile(selectedId);return true;}catch(err){selectedPropertyProfile=null;return false;}}
 
     /* ── Composer condense ── */
     function setComposerCondensed(condensed){
@@ -512,10 +512,13 @@
     async function explainActiveSelection(){if(!analysisState.activeSelection||!selectedPropertyProfile||!selectedPropertyProfile.property_id)return;selectionExplainStatusEl.textContent="Explaining...";selectionExplanationEl.textContent="Working...";selectionExplanationEl.classList.remove("empty-note");explainSelectionBtn.disabled=true;try{const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";const res=await fetch("/api/analysis/explain-selection",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({property_id:selectedPropertyProfile.property_id,prompt:analysisState.latestPrompt,category:analysisState.analysisCategory,selection_type:analysisState.activeSelection.request.selection_type,metric_column:analysisState.activeSelection.request.metric_column,selection_payload:analysisState.activeSelection.request.selection_payload,llm_provider:provider})});const data=await res.json();if(data.status==="error"){selectionExplanationEl.textContent=data.error||"Explanation failed.";selectionExplainStatusEl.textContent="Failed";}else{selectionExplanationEl.textContent=data.response||"No explanation returned.";selectionExplainStatusEl.textContent="Done";}}catch(err){selectionExplanationEl.textContent=String(err);selectionExplainStatusEl.textContent="Failed";}finally{explainSelectionBtn.disabled=false;}}
 
     /* ── Run analysis ── */
-    async function runAnalysis(){
+    async function runAnalysis(options={}){
       if(!selectedPropertyProfile||!selectedPropertyProfile.property_id){statusEl.textContent="No property selected.";return;}
       const provider=allowedProviders.has(providerEl.value)?providerEl.value:"default";
-      const prompt=promptEl.value.trim();
+      const autoRun=options.auto===true;
+      const existingPrompt=promptEl.value.trim();
+      const prompt=existingPrompt||DEFAULT_ANALYSIS_PROMPT;
+      if(!existingPrompt&&autoRun){promptEl.value=DEFAULT_ANALYSIS_PROMPT;}
       if(!prompt){statusEl.textContent="Please enter a prompt.";return;}
       try{localStorage.setItem(LLM_PROVIDER_STORAGE_KEY,provider);}catch(err){}
       runBtn.disabled=true;statusEl.innerHTML='<span class="inline-spinner" aria-hidden="true"></span> Running...';
@@ -549,14 +552,14 @@
     }
 
     /* ── Init + event listeners ── */
-    propertyProfileEl.addEventListener("change",()=>{setSelectedPropertyProfile(propertyProfileEl.value);});
+    propertyProfileEl.addEventListener("change",()=>{setSelectedPropertyProfile(propertyProfileEl.value);runAnalysis({auto:true});});
     runBtn.addEventListener("click",runAnalysis);
     promptEl.addEventListener("keydown",event=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){event.preventDefault();runAnalysis();}});
     explainSelectionBtn.addEventListener("click",explainActiveSelection);
     composerToggleEl.addEventListener("click",()=>{setComposerCondensed(analysisState.composerExpanded);});
     answerJumpEl.addEventListener("click",scrollToNarrative);
     narrativeToggleEl.addEventListener("click",toggleNarrative);
-    resetSelectionDrawer();loadPropertyProfiles();
+    resetSelectionDrawer();loadPropertyProfiles().then(loaded=>{if(loaded)runAnalysis({auto:true});});
   </script>
 </body>
 </html>
