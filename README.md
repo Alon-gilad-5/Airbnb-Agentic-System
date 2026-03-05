@@ -57,6 +57,16 @@ Offline calibration tool used to manually curate which Pinecone-retrieved review
 
 ---
 
+### Results Rubric Labeling
+
+Manual scoring interface used for the Results section. This page loads holdout `test` cases for reviews and mail, shows evaluation evidence/metadata, and writes 0/1/2 rubric labels directly to CSV files.
+
+![Results rubric labeling UI](docs/screenshots/Results_Rubric_Labeling.PNG)
+
+*This is where manual annotation was performed for reported rubric quality: Grounding, Actionability, and Tone/Policy Safety. Final paper metrics are based on these manually scored rubric files under `eval/manual/`.*
+
+---
+
 ### Market Watch
 
 Fully deterministic signal collector — no LLM calls. Monitors weather, nearby events (Ticketmaster), and public holidays to surface demand signals for your property's location.
