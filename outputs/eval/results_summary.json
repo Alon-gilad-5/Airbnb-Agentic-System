@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-03-05T16:08:48.667050+00:00",
+  "generated_at_utc": "2026-03-05T16:44:28.151023+00:00",
   "split": "test",
   "agents": {
     "reviews": {
@@ -75,7 +75,7 @@
           "case_id": "case_043",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.014,
+          "latency_ms": 0.015,
           "metadata": {
             "threshold": 0.48,
             "should_answer": false,
@@ -97,7 +97,7 @@
           "case_id": "case_044",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.012,
+          "latency_ms": 0.011,
           "metadata": {
             "threshold": 0.48,
             "should_answer": true,
@@ -152,7 +152,7 @@
           "case_id": "case_046",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.008,
+          "latency_ms": 0.006,
           "metadata": {
             "threshold": 0.48,
             "should_answer": true,
@@ -208,7 +208,7 @@
           "case_id": "case_048",
           "pass": false,
           "failure_reason": "decision_or_evidence_mismatch",
-          "latency_ms": 0.005,
+          "latency_ms": 0.004,
           "metadata": {
             "threshold": 0.48,
             "should_answer": false,
@@ -285,7 +285,7 @@
           "case_id": "case_051",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.006,
+          "latency_ms": 0.005,
           "metadata": {
             "threshold": 0.48,
             "should_answer": true,
@@ -314,7 +314,7 @@
           "case_id": "case_052",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.005,
+          "latency_ms": 0.004,
           "metadata": {
             "threshold": 0.48,
             "should_answer": false,
@@ -443,7 +443,7 @@
           "case_id": "case_057",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.004,
+          "latency_ms": 0.005,
           "metadata": {
             "threshold": 0.48,
             "should_answer": false,
@@ -559,7 +559,7 @@
         "crash_free_rate": 1.0,
         "contract_pass_rate": 1.0,
         "step_trace_completeness": 1.0,
-        "p95_latency_ms": 0.47
+        "p95_latency_ms": 0.424
       },
       "task_success_rate": 1.0,
       "case_results": [
@@ -569,7 +569,7 @@
           "case_id": "analyst_test_001",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.448,
+          "latency_ms": 0.353,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -582,7 +582,7 @@
           "case_id": "analyst_test_002",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.029,
+          "latency_ms": 0.023,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -595,7 +595,7 @@
           "case_id": "analyst_test_003",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.02,
+          "latency_ms": 0.016,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -608,7 +608,7 @@
           "case_id": "analyst_test_004",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.482,
+          "latency_ms": 0.462,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -621,7 +621,7 @@
           "case_id": "analyst_test_005",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.027,
+          "latency_ms": 0.02,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -634,7 +634,7 @@
           "case_id": "analyst_test_006",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.018,
+          "latency_ms": 0.015,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -647,7 +647,7 @@
           "case_id": "analyst_test_007",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.315,
+          "latency_ms": 0.24,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -660,7 +660,7 @@
           "case_id": "analyst_test_008",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.239,
+          "latency_ms": 0.223,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -687,7 +687,7 @@
         "crash_free_rate": 1.0,
         "contract_pass_rate": 1.0,
         "step_trace_completeness": 1.0,
-        "p95_latency_ms": 0.527
+        "p95_latency_ms": 0.469
       },
       "task_success_rate": 0.875,
       "case_results": [
@@ -697,7 +697,7 @@
           "case_id": "pricing_test_001",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.557,
+          "latency_ms": 0.498,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -710,7 +710,7 @@
           "case_id": "pricing_test_002",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.055,
+          "latency_ms": 0.034,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -723,7 +723,7 @@
           "case_id": "pricing_test_003",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.039,
+          "latency_ms": 0.025,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -736,7 +736,7 @@
           "case_id": "pricing_test_004",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.472,
+          "latency_ms": 0.353,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -749,7 +749,7 @@
           "case_id": "pricing_test_005",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.471,
+          "latency_ms": 0.415,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -762,7 +762,7 @@
           "case_id": "pricing_test_006",
           "pass": false,
           "failure_reason": "recommendation_expectation_mismatch",
-          "latency_ms": 0.347,
+          "latency_ms": 0.313,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -775,7 +775,7 @@
           "case_id": "pricing_test_007",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.025,
+          "latency_ms": 0.024,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -788,7 +788,7 @@
           "case_id": "pricing_test_008",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.022,
+          "latency_ms": 0.021,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -815,7 +815,7 @@
         "crash_free_rate": 1.0,
         "contract_pass_rate": 1.0,
         "step_trace_completeness": 1.0,
-        "p95_latency_ms": 3.083
+        "p95_latency_ms": 3.128
       },
       "task_success_rate": 1.0,
       "case_results": [
@@ -825,7 +825,7 @@
           "case_id": "market_test_001",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.657,
+          "latency_ms": 1.543,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -838,7 +838,7 @@
           "case_id": "market_test_002",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.321,
+          "latency_ms": 0.327,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -851,7 +851,7 @@
           "case_id": "market_test_003",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 2.985,
+          "latency_ms": 3.135,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -864,7 +864,7 @@
           "case_id": "market_test_004",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 2.942,
+          "latency_ms": 2.726,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -877,7 +877,7 @@
           "case_id": "market_test_005",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 3.126,
+          "latency_ms": 3.116,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -890,7 +890,7 @@
           "case_id": "market_test_006",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.314,
+          "latency_ms": 0.299,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -903,7 +903,7 @@
           "case_id": "market_test_007",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.428,
+          "latency_ms": 1.164,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -916,7 +916,7 @@
           "case_id": "market_test_008",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 3.004,
+          "latency_ms": 3.008,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -944,7 +944,7 @@
         "crash_free_rate": 1.0,
         "contract_pass_rate": 1.0,
         "step_trace_completeness": 1.0,
-        "p95_latency_ms": 1.413
+        "p95_latency_ms": 1.401
       },
       "task_success_rate": 0.7778,
       "case_results": [
@@ -954,7 +954,7 @@
           "case_id": "mail_test_001",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.412,
+          "latency_ms": 1.373,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -985,7 +985,7 @@
           "case_id": "mail_test_002",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.414,
+          "latency_ms": 1.42,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1008,7 +1008,7 @@
           "case_id": "mail_test_003",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.414,
+          "latency_ms": 0.424,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1025,7 +1025,7 @@
           "case_id": "mail_test_004",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.115,
+          "latency_ms": 1.182,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1056,7 +1056,7 @@
           "case_id": "mail_test_005",
           "pass": false,
           "failure_reason": "classification_or_policy_mismatch",
-          "latency_ms": 0.964,
+          "latency_ms": 1.309,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1087,7 +1087,7 @@
           "case_id": "mail_test_006",
           "pass": false,
           "failure_reason": "classification_or_policy_mismatch",
-          "latency_ms": 0.938,
+          "latency_ms": 0.939,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1118,7 +1118,7 @@
           "case_id": "mail_test_007",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 0.911,
+          "latency_ms": 0.953,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1163,7 +1163,7 @@
           "case_id": "mail_test_008",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.097,
+          "latency_ms": 1.161,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,
@@ -1193,7 +1193,7 @@
           "case_id": "mail_test_009",
           "pass": true,
           "failure_reason": null,
-          "latency_ms": 1.083,
+          "latency_ms": 1.093,
           "metadata": {
             "contract_ok": true,
             "step_trace_ok": true,

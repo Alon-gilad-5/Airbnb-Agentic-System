@@ -274,10 +274,47 @@
     .inbox-toggle:hover { color: var(--accent); }
     .settings-checkbox { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem; }
     .settings-checkbox input { cursor: pointer; }
+    .try-me-note {
+      margin-top: 10px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .try-me-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .try-me-example {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f8fbfe;
+      padding: 10px;
+    }
+    .try-me-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .try-me-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .try-me-body {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.86rem;
+      color: var(--ink);
+    }
     @media (max-width: 768px) {
       .notif-header { flex-direction: column; }
       .email-actions { width: 100%; }
       .draft-box textarea.action-text { min-height: 80px; }
+      .try-me-head { flex-direction: column; align-items: flex-start; }
     }
   </style>
 </head>
@@ -304,6 +341,46 @@
           <input type="checkbox" id="autoSendGoodReviews" />
           <span>Auto-send good reviews (rating &gt; 3) without approval</span>
         </label>
+      </p>
+      <p class="try-me-note">
+        Try me out: send an email to <strong>airbnbprojtest@gmail.com</strong>.
+        You can copy and paste one of the examples below.
+      </p>
+      <div class="try-me-grid">
+        <article class="try-me-example">
+          <div class="try-me-head">
+            <span class="try-me-title">Example 1 - Urgent guest message</span>
+            <button class="secondary copy-example-btn" type="button" data-copy-target="tryMeExampleUrgent">Copy</button>
+          </div>
+          <pre class="try-me-body" id="tryMeExampleUrgent">Subject: Urgent - guest locked out
+
+Hi,
+
+We just arrived and cannot get in. The keypad code is not working and we have been waiting outside for 20 minutes.
+
+Can you send the backup code or call us as soon as possible?
+
+Thanks,
+Alex</pre>
+        </article>
+        <article class="try-me-example">
+          <div class="try-me-head">
+            <span class="try-me-title">Example 2 - New property review (bad)</span>
+            <button class="secondary copy-example-btn" type="button" data-copy-target="tryMeExampleReviewBad">Copy</button>
+          </div>
+          <pre class="try-me-body" id="tryMeExampleReviewBad">Subject: New review from guest Riley: 2 stars
+
+Riley left a review of your property.
+
+Rating: 2/5 stars
+
+"The place was not clean when we arrived. Found dirty towels in the bathroom and the kitchen had unwashed dishes. Location was okay but the cleanliness issues ruined our stay."
+
+You can respond to this review within 30 days.</pre>
+        </article>
+      </div>
+      <p class="try-me-note">
+        Source files: <code>docs/mail_try_me_examples/guest_urgent_lockout.txt</code> and <code>docs/mail_try_me_examples/new_property_review_bad.txt</code>
       </p>
     </section>
 
@@ -401,6 +478,32 @@
       window.setTimeout(() => {
         toast.className = `toast ${kind}`;
       }, 4000);
+    }
+
+    async function copyExampleText(exampleId) {
+      const el = document.getElementById(exampleId);
+      if (!el) {
+        showToast("Example not found.", "error");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(el.textContent || "");
+        showToast("Example copied.", "ok");
+      } catch (err) {
+        showToast("Failed to copy example.", "error");
+      }
+    }
+
+    function bindTryMeCopyButtons() {
+      document.querySelectorAll(".copy-example-btn").forEach((btn) => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          copyExampleText(btn.dataset.copyTarget);
+        });
+      });
     }
 
     function timeAgo(isoStr) {
@@ -1177,6 +1280,7 @@
 
     loadNotifications();
     loadMailSettings();
+    bindTryMeCopyButtons();
     connectSSE();
     loadPropertyProfiles().finally(() => {
       updateNavBadges();

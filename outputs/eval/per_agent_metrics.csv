@@ -1,6 +1,6 @@
 agent,split,primary_metric_name,primary_metric,primary_metric_hits,primary_metric_total,primary_metric_ci95_low,primary_metric_ci95_high,task_success_rate,task_success_passes,task_success_total,task_success_ci95_low,task_success_ci95_high,case_count,crash_free_rate,contract_pass_rate,step_trace_completeness,p95_latency_ms
-analyst,test,numeric_computation_accuracy,1.0,4,4,0.5101,1.0,1.0,8,8,0.6756,1.0,8,1.0,1.0,1.0,0.47
-mail,test,classification_accuracy,1.0,9,9,0.7008,1.0,0.7778,7,9,0.4526,0.9368,9,1.0,1.0,1.0,1.413
-market_watch,test,alert_detection_accuracy,1.0,4,4,0.5101,1.0,1.0,8,8,0.6756,1.0,8,1.0,1.0,1.0,3.083
-pricing,test,recommendation_direction_accuracy,1.0,4,4,0.5101,1.0,0.875,7,8,0.5291,0.9776,8,1.0,1.0,1.0,0.527
+analyst,test,numeric_computation_accuracy,1.0,4,4,0.5101,1.0,1.0,8,8,0.6756,1.0,8,1.0,1.0,1.0,0.424
+mail,test,classification_accuracy,1.0,9,9,0.7008,1.0,0.7778,7,9,0.4526,0.9368,9,1.0,1.0,1.0,1.401
+market_watch,test,alert_detection_accuracy,1.0,4,4,0.5101,1.0,1.0,8,8,0.6756,1.0,8,1.0,1.0,1.0,3.128
+pricing,test,recommendation_direction_accuracy,1.0,4,4,0.5101,1.0,0.875,7,8,0.5291,0.9776,8,1.0,1.0,1.0,0.469
 reviews,test,answer_decision_accuracy,0.6667,12,18,0.4375,0.8372,0.6667,12,18,0.4375,0.8372,18,1.0,1.0,1.0,0.012

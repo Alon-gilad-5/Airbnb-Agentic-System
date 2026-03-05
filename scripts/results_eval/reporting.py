@@ -60,11 +60,19 @@ def _task_counts(item: dict[str, Any], metrics: dict[str, Any]) -> tuple[int | N
     return hits, total
 
 
-def _format_rate_with_ci(rate: float, hits: int | None, total: int | None) -> str:
+def _format_rate_with_ci(
+    rate: float,
+    hits: int | None,
+    total: int | None,
+    *,
+    include_counts: bool = True,
+) -> str:
     if hits is None or total is None or total <= 0:
         return f"{rate:.4f} (n/a)"
     low, high = _wilson_ci(hits, total)
-    return f"{rate:.4f} ({hits}/{total}; 95% CI {low:.3f}-{high:.3f})"
+    if include_counts:
+        return f"{rate:.4f} ({hits}/{total}; 95% CI {low:.3f}-{high:.3f})"
+    return f"{rate:.4f} (95% CI {low:.3f}-{high:.3f})"
 
 
 def write_per_agent_csv(*, summary: dict[str, Any], output_path: Path) -> None:
@@ -145,19 +153,25 @@ def _dataset_table(repo_root: Path) -> str:
 def _per_agent_table(summary: dict[str, Any]) -> str:
     agents = summary.get("agents", {})
     lines = [
-        "| Agent | Primary Metric (x/n, 95% CI) | Task Success (x/n, 95% CI) | Crash-Free | Contract | Step Trace | P95 Latency (ms) | Cases |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Agent | n_primary / n_total | Primary Metric (95% CI) | Task Success (x/n, 95% CI) | Crash-Free | Contract | Step Trace | P95 Latency (ms) | Cases |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for agent_name in sorted(agents.keys()):
         item = agents[agent_name]
         reliability = item.get("reliability", {})
         metrics = item.get("metrics", {})
+        case_count = int(metrics.get("case_count", 0))
         primary_hits, primary_total = _primary_counts(metrics)
         task_hits, task_total = _task_counts(item, metrics)
+        if primary_total is None or primary_total <= 0:
+            primary_scope = f"n/a/{case_count}"
+        else:
+            primary_scope = f"{primary_total}/{case_count}"
         primary_display = _format_rate_with_ci(
             float(item.get("primary_metric", 0.0)),
             primary_hits,
             primary_total,
+            include_counts=False,
         )
         task_display = _format_rate_with_ci(
             float(item.get("task_success_rate", 0.0)),
@@ -165,15 +179,16 @@ def _per_agent_table(summary: dict[str, Any]) -> str:
             task_total,
         )
         lines.append(
-            "| {agent} | {primary} | {task} | {crash:.4f} | {contract:.4f} | {trace:.4f} | {p95:.3f} | {cases} |".format(
+            "| {agent} | {primary_scope} | {primary} | {task} | {crash:.4f} | {contract:.4f} | {trace:.4f} | {p95:.3f} | {cases} |".format(
                 agent=agent_name,
+                primary_scope=primary_scope,
                 primary=primary_display,
                 task=task_display,
                 crash=float(reliability.get("crash_free_rate", 0.0)),
                 contract=float(reliability.get("contract_pass_rate", 0.0)),
                 trace=float(reliability.get("step_trace_completeness", 0.0)),
                 p95=float(reliability.get("p95_latency_ms", 0.0)),
-                cases=int(metrics.get("case_count", 0)),
+                cases=case_count,
             )
         )
     return "\n".join(lines) + "\n"
@@ -209,6 +224,7 @@ def build_results_markdown(*, repo_root: Path, summary: dict[str, Any]) -> str:
         + _dataset_table(repo_root)
         + "\n## Table 2. Per-agent quality and reliability metrics\n\n"
         + _per_agent_table(summary)
+        + "\nNote: `n_primary` counts only cases where the agent's primary metric is defined (typically non-error-path checks).\n"
         + "\n## Table 3. Reviews threshold ablation\n\n"
         + _reviews_ablation_table(summary)
         + "\n## Manual rubric scoring status\n\n"

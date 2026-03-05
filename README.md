@@ -1,5 +1,13 @@
 # Airbnb Business Agent
 
+## Project Paper
+
+An Overleaf-exported project paper is available at:
+
+- [docs/Airbnb_Agentic_System.pdf](docs/Airbnb_Agentic_System.pdf)
+
+For further explanations of the project (architecture, methods, and evaluation narrative), you can read this file.
+
 A multi-agent AI system for Airbnb property management intelligence. The platform provides review analysis, market monitoring, competitive benchmarking, dynamic pricing, and email management through specialized domain agents with dedicated API endpoints.
 
 ![Architecture](docs/architecture-v2.svg)
