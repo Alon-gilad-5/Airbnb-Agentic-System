@@ -147,8 +147,12 @@ def _score_split(
     metrics = {
         "case_count": total,
         "answer_decision_accuracy": round((decision_hits / total) if total else 0.0, 4),
+        "primary_metric_hits": decision_hits,
+        "primary_metric_total": total,
         "evidence_precision": round(evidence_precision, 4),
         "task_success_rate": compute_task_success_rate(rows),
+        "task_success_passes": sum(1 for row in rows if bool(row.get("pass"))),
+        "task_success_total": total,
     }
     return rows, metrics
 
@@ -165,14 +169,15 @@ def evaluate_reviews(
 
     pool_path = _pick_existing_path(
         [
-            repo_root / "outputs" / "reviews_threshold_label_pool_labeled20.jsonl",
             repo_root / "outputs" / "reviews_threshold_label_pool.jsonl",
+            repo_root / "outputs" / "reviews_threshold_label_pool_labeled20.jsonl",
         ]
     )
     gold_path = _pick_existing_path(
         [
-            repo_root / "outputs" / "reviews_threshold_gold_labeled20.csv",
+            repo_root / "eval" / "cases" / "reviews_threshold_gold.csv",
             repo_root / "outputs" / "reviews_threshold_gold.csv",
+            repo_root / "outputs" / "reviews_threshold_gold_labeled20.csv",
         ]
     )
     cases_path = repo_root / "outputs" / "reviews_threshold_cases.jsonl"

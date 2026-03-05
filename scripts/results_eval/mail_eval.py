@@ -198,8 +198,12 @@ def evaluate_mail(
         "metrics": {
             "case_count": len(case_results),
             "classification_accuracy": round(classification_accuracy, 4),
+            "primary_metric_hits": classification_hits,
+            "primary_metric_total": classification_total,
             "policy_action_accuracy": round(policy_accuracy, 4),
             "task_success_rate": task_success_rate,
+            "task_success_passes": sum(1 for row in case_results if bool(row.get("pass"))),
+            "task_success_total": len(case_results),
         },
         "reliability": reliability,
         "task_success_rate": task_success_rate,

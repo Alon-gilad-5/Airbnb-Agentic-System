@@ -242,9 +242,12 @@ def evaluate_pricing(
             "case_count": len(case_results),
             "recommendation_direction_accuracy": round(direction_accuracy, 4),
             "task_success_rate": task_success_rate,
+            "primary_metric_hits": direction_hits,
+            "primary_metric_total": direction_total,
+            "task_success_passes": sum(1 for row in case_results if bool(row.get("pass"))),
+            "task_success_total": len(case_results),
         },
         "reliability": reliability,
         "task_success_rate": task_success_rate,
         "case_results": case_results,
     }
-
