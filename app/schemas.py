@@ -398,6 +398,60 @@ class ThresholdLabelSaveResponse(BaseModel):
     case_id: str
 
 
+class RubricLabelCase(BaseModel):
+    """One rubric-scoring case for results evaluation."""
+
+    source: Literal["reviews", "mail"]
+    case_id: str
+    split: Literal["dev", "test"]
+    prompt: str
+    context: dict[str, Any]
+    expected: dict[str, Any]
+    tags: list[str]
+    pass_status: bool | None
+    failure_reason: str | None
+    result_metadata: dict[str, Any]
+    result_preview: str | None
+    grounding: int | None = Field(default=None, ge=0, le=2)
+    actionability: int | None = Field(default=None, ge=0, le=2)
+    tone_policy_safety: int | None = Field(default=None, ge=0, le=2)
+    notes: str | None = None
+    scored: bool
+
+
+class RubricLabelingDataResponse(BaseModel):
+    """Response payload for rubric-labeling UI bootstrap data."""
+
+    status: Literal["ok", "error"]
+    error: str | None
+    total_cases: int
+    scored_cases: int
+    cases: list[RubricLabelCase]
+
+
+class RubricLabelSaveRequest(BaseModel):
+    """Request payload for saving one rubric-scoring row."""
+
+    source: Literal["reviews", "mail"]
+    case_id: str = Field(min_length=1)
+    split: Literal["dev", "test"]
+    grounding: int | None = Field(default=None, ge=0, le=2)
+    actionability: int | None = Field(default=None, ge=0, le=2)
+    tone_policy_safety: int | None = Field(default=None, ge=0, le=2)
+    notes: str | None = None
+
+
+class RubricLabelSaveResponse(BaseModel):
+    """Result payload for one rubric-row write operation."""
+
+    status: Literal["ok", "error"]
+    error: str | None
+    source: Literal["reviews", "mail"]
+    case_id: str
+    split: Literal["dev", "test"]
+    scored: bool
+
+
 # ---------------------------------------------------------------------------
 # Mail agent schemas
 # ---------------------------------------------------------------------------

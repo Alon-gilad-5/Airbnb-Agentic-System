@@ -2,7 +2,7 @@
 
 A multi-agent AI system for Airbnb property management intelligence. The platform provides review analysis, market monitoring, competitive benchmarking, dynamic pricing, and email management through specialized domain agents with dedicated API endpoints.
 
-![Architecture](docs/architecture.svg)
+![Architecture](docs/architecture-v2.svg)
 
 ## Features
 
@@ -110,7 +110,7 @@ Deterministic comp-based nightly rate recommendations combining neighbor pricing
 ## Tech Stack
 
 - **Backend**: FastAPI, Uvicorn
-- **Agent orchestration**: LangGraph, LangChain
+- **Agent workflows**: LangChain Runnable pipelines
 - **LLM**: Azure OpenAI / OpenRouter (configurable per request)
 - **Vector DB**: Pinecone
 - **Database**: SQLite (local) / Postgres (production)

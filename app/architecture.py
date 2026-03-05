@@ -59,8 +59,8 @@ class Box:
         return (self.x + self.w, self.y + (2 * self.h) // 3)
 
 
-SVG_WIDTH = 1880
-SVG_HEIGHT = 1160
+SVG_WIDTH = 1340
+SVG_HEIGHT = 1680
 
 API_STYLE = BoxStyle(fill="#fff7ed", stroke="#fb923c", accent="#f59e0b", title_fill="#7c2d12")
 AGENT_STYLE = BoxStyle(fill="#eff6ff", stroke="#60a5fa", accent="#2563eb")
@@ -132,218 +132,221 @@ def _route(points: list[tuple[int, int]], *, stroke: str, marker_id: str, width:
 
 def render_architecture_svg() -> str:
     """Return the architecture diagram SVG markup."""
+    left_panel = (36, 214, 360, 1290)
+    center_panel = (434, 214, 392, 1290)
+    right_panel = (864, 214, 440, 1290)
 
-    left_panel = (40, 170, 420, 930)
-    center_panel = (510, 170, 440, 930)
-    right_panel = (1000, 170, 840, 930)
-
-    inp = Box(
-        x=90,
-        y=250,
-        w=320,
-        h=110,
-        title="Input API",
-        lines=("dedicated endpoints per agent", "prompt + context"),
+    reviews_ui = Box(
+        x=74,
+        y=318,
+        w=284,
+        h=108,
+        title="Reviews Console",
+        lines=("POST /api/execute", "prompt + owner context"),
         style=API_STYLE,
     )
-    out = Box(
-        x=1270,
-        y=250,
-        w=430,
-        h=110,
-        title="Output API",
-        lines=("status / response / steps", "JSON payload"),
+    market_ui = Box(
+        x=74,
+        y=538,
+        w=284,
+        h=108,
+        title="Market Watch",
+        lines=("POST /api/market_watch/run", "manual or autonomous run"),
+        style=API_STYLE,
+    )
+    analysis_ui = Box(
+        x=74,
+        y=758,
+        w=284,
+        h=108,
+        title="Analysis Console",
+        lines=("POST /api/analysis", "comparison request + filters"),
+        style=API_STYLE,
+    )
+    pricing_ui = Box(
+        x=74,
+        y=978,
+        w=284,
+        h=108,
+        title="Pricing Console",
+        lines=("POST /api/pricing", "property + horizon + mode"),
+        style=API_STYLE,
+    )
+    mail_ui = Box(
+        x=74,
+        y=1198,
+        w=284,
+        h=108,
+        title="Mail Console",
+        lines=("/api/mail/* + SSE", "owner review + live updates"),
         style=API_STYLE,
     )
 
     reviews = Box(
-        x=560,
-        y=410,
-        w=340,
-        h=110,
+        x=480,
+        y=312,
+        w=300,
+        h=120,
         title="reviews_agent",
-        lines=("vector retrieval + web fallback", "answer synthesis + guardrails"),
+        lines=("review Q&A", "retrieval + evidence guardrails"),
         style=AGENT_STYLE,
     )
     market = Box(
-        x=560,
-        y=550,
-        w=340,
-        h=110,
+        x=480,
+        y=532,
+        w=300,
+        h=120,
         title="market_watch_agent",
-        lines=("weather / events / holidays", "signal scoring + alert generation"),
+        lines=("demand signal scan", "weather / events / holidays"),
         style=AGENT_STYLE,
     )
     analyst = Box(
-        x=560,
-        y=690,
-        w=340,
-        h=110,
+        x=480,
+        y=752,
+        w=300,
+        h=120,
         title="analyst_agent",
-        lines=("neighbor benchmarking", "structured listing comparisons"),
+        lines=("neighbor benchmarking", "structured metric comparison"),
         style=AGENT_STYLE,
     )
     pricing = Box(
-        x=560,
-        y=830,
-        w=340,
-        h=110,
+        x=480,
+        y=972,
+        w=300,
+        h=120,
         title="pricing_agent",
-        lines=("comp-based pricing", "market signals + review volume"),
+        lines=("nightly rate recommendation", "comp + market signal blend"),
         style=AGENT_STYLE,
     )
     mail = Box(
-        x=560,
-        y=970,
-        w=340,
-        h=110,
+        x=480,
+        y=1192,
+        w=300,
+        h=120,
         title="mail_agent",
-        lines=("inbox classify + draft + send", "Gmail push webhooks + HITL"),
+        lines=("inbox triage + drafts", "human-in-the-loop send flow"),
         style=AGENT_STYLE,
     )
 
     pinecone = Box(
-        x=90,
-        y=430,
-        w=320,
-        h=110,
+        x=918,
+        y=312,
+        w=328,
+        h=120,
         title="Pinecone",
-        lines=("review embeddings", "+ web quarantine namespace"),
+        lines=("review embeddings", "web quarantine namespace"),
         style=DATA_STYLE,
     )
-    llm = Box(
-        x=90,
-        y=650,
-        w=320,
-        h=110,
-        title="LLM Gateway",
-        lines=("Azure OpenAI compatible", "embeddings + chat completions"),
-        style=INFRA_STYLE,
-    )
-    scheduler = Box(
-        x=90,
-        y=930,
-        w=320,
-        h=110,
-        title="Scheduler",
-        lines=("internal thread / Vercel cron", "autonomous market runs"),
-        style=SCHED_STYLE,
-    )
-
     market_apis = Box(
-        x=1270,
-        y=550,
-        w=430,
-        h=110,
+        x=918,
+        y=532,
+        w=328,
+        h=120,
         title="External Market APIs",
         lines=("Open-Meteo + Ticketmaster", "Nager.Date holidays"),
         style=INTEGRATION_STYLE,
     )
-    alerts = Box(
-        x=1270,
-        y=690,
-        w=430,
-        h=110,
-        title="Alerts Inbox",
-        lines=("SQLite / Postgres", "GET /api/market_watch/alerts"),
-        style=DATA_STYLE,
-    )
     supabase = Box(
-        x=1270,
-        y=830,
-        w=430,
-        h=110,
+        x=918,
+        y=752,
+        w=328,
+        h=120,
         title="Supabase Listings",
-        lines=("large_dataset_table", "benchmark + pricing data"),
+        lines=("large_dataset_table", "benchmark + pricing inputs"),
         style=DATA_STYLE,
     )
     gmail = Box(
-        x=1270,
-        y=970,
-        w=430,
-        h=110,
+        x=918,
+        y=1192,
+        w=328,
+        h=120,
         title="Gmail API",
         lines=("OAuth2 inbox fetch + send", "push notifications"),
         style=INTEGRATION_STYLE,
     )
+    llm = Box(
+        x=480,
+        y=1384,
+        w=300,
+        h=120,
+        title="LLM Gateway",
+        lines=("Azure OpenAI compatible", "shared by reviews / analysis / pricing / mail"),
+        style=INFRA_STYLE,
+    )
+    automation = Box(
+        x=918,
+        y=1384,
+        w=328,
+        h=120,
+        title="Automation & Outputs",
+        lines=("scheduler, alerts inbox, SSE", "traceable JSON response steps"),
+        style=SCHED_STYLE,
+    )
 
-    agents = (reviews, market, analyst, pricing, mail)
-    control_routes = []
-    for agent in agents:
-        mid_y = agent.top[1] - 16
-        control_routes.append(
-            _route(
-                [inp.right, (inp.right[0] + 30, inp.right[1]), (inp.right[0] + 30, mid_y), (agent.top[0], mid_y), agent.top],
-                stroke="#2563eb",
-                marker_id="arrowControl",
-            )
-        )
-        control_routes.append(
-            _route(
-                [agent.right, (out.left[0] - 30, agent.right[1]), (out.left[0] - 30, out.left[1]), out.left],
-                stroke="#2563eb",
-                marker_id="arrowControl",
-            )
-        )
+    ui_boxes = (reviews_ui, market_ui, analysis_ui, pricing_ui, mail_ui)
+    agent_boxes = (reviews, market, analyst, pricing, mail)
+
+    control_routes = [
+        _route([reviews_ui.right, reviews.left], stroke="#2563eb", marker_id="arrowControl", width=4),
+        _route([market_ui.right, market.left], stroke="#2563eb", marker_id="arrowControl", width=4),
+        _route([analysis_ui.right, analyst.left], stroke="#2563eb", marker_id="arrowControl", width=4),
+        _route([pricing_ui.right, pricing.left], stroke="#2563eb", marker_id="arrowControl", width=4),
+        _route([mail_ui.right, mail.left], stroke="#2563eb", marker_id="arrowControl", width=4),
+    ]
 
     data_routes = [
-        _route([reviews.left_upper, pinecone.right_upper], stroke="#64748b", marker_id="arrowData"),
-        _route(
-            [reviews.left_lower, (460, reviews.left_lower[1]), (460, llm.right_upper[1]), llm.right_upper],
-            stroke="#64748b",
-            marker_id="arrowData",
-        ),
-        _route(
-            [pricing.left, (455, pricing.left[1]), (455, llm.right_lower[1]), llm.right_lower],
-            stroke="#64748b",
-            marker_id="arrowData",
-        ),
-        _route(
-            [mail.left, (440, mail.left[1]), (440, llm.right[1] + 18), (llm.right[0], llm.right[1] + 18)],
-            stroke="#64748b",
-            marker_id="arrowData",
-        ),
+        _route([reviews.right, pinecone.left], stroke="#64748b", marker_id="arrowData"),
         _route([market.right, market_apis.left], stroke="#64748b", marker_id="arrowData"),
+        _route([analyst.right, supabase.left], stroke="#64748b", marker_id="arrowData"),
+        _route([pricing.right_upper, supabase.left_lower], stroke="#64748b", marker_id="arrowData"),
         _route(
-            [market.right_lower, (950, market.right_lower[1]), (950, alerts.left_upper[1]), alerts.left_upper],
-            stroke="#64748b",
-            marker_id="arrowData",
-        ),
-        _route(
-            [analyst.right, (980, analyst.right[1]), (980, supabase.left_upper[1]), supabase.left_upper],
-            stroke="#64748b",
-            marker_id="arrowData",
-        ),
-        _route([pricing.right, supabase.left], stroke="#64748b", marker_id="arrowData"),
-        _route(
-            [pricing.right_upper, (1010, pricing.right_upper[1]), (1010, market_apis.left_lower[1]), market_apis.left_lower],
+            [pricing.right_lower, (840, pricing.right_lower[1]), (840, market_apis.left_lower[1]), market_apis.left_lower],
             stroke="#64748b",
             marker_id="arrowData",
         ),
         _route([mail.right, gmail.left], stroke="#64748b", marker_id="arrowData"),
+        _route(
+            [reviews.bottom, (reviews.bottom[0], 1352), (llm.top[0] - 46, 1352), (llm.top[0] - 46, llm.top[1]), llm.top],
+            stroke="#64748b",
+            marker_id="arrowData",
+        ),
+        _route([analyst.bottom, (analyst.bottom[0], llm.top[1]), llm.top], stroke="#64748b", marker_id="arrowData"),
+        _route(
+            [pricing.bottom, (pricing.bottom[0], llm.top[1]), (llm.top[0] + 44, llm.top[1]), llm.top],
+            stroke="#64748b",
+            marker_id="arrowData",
+        ),
+        _route(
+            [mail.bottom, (mail.bottom[0], 1352), (llm.top[0] + 88, 1352), (llm.top[0] + 88, llm.top[1]), llm.top],
+            stroke="#64748b",
+            marker_id="arrowData",
+        ),
     ]
 
-    scheduler_route = _route(
-        [scheduler.top, (scheduler.top[0], market.left_lower[1]), market.left_lower],
-        stroke="#16a34a",
-        marker_id="arrowSchedule",
-    )
+    automation_routes = [
+        _route(
+            [market.bottom, (market.bottom[0], 1352), (automation.left[0] + 72, 1352), (automation.left[0] + 72, automation.top[1]), automation.top],
+            stroke="#16a34a",
+            marker_id="arrowSchedule",
+            width=4,
+        ),
+        _route(
+            [mail.right_lower, (840, mail.right_lower[1]), (840, automation.left_lower[1]), automation.left_lower],
+            stroke="#16a34a",
+            marker_id="arrowSchedule",
+            width=4,
+        ),
+    ]
 
     boxes_svg = "".join(_box_svg(box) for box in (
-        inp,
-        out,
-        reviews,
-        market,
-        analyst,
-        pricing,
-        mail,
+        *ui_boxes,
+        *agent_boxes,
         pinecone,
-        llm,
-        scheduler,
         market_apis,
-        alerts,
         supabase,
         gmail,
+        llm,
+        automation,
     ))
 
     panels_svg = (
@@ -352,8 +355,8 @@ def render_architecture_svg() -> str:
             y=left_panel[1],
             w=left_panel[2],
             h=left_panel[3],
-            label="INTERFACES & PLATFORM",
-            subtitle="HTTP entrypoints, shared infrastructure, and automation",
+            label="INTERFACES",
+            subtitle="Each page calls its own endpoint directly",
             accent="#f59e0b",
         )
         + _panel(
@@ -361,17 +364,17 @@ def render_architecture_svg() -> str:
             y=center_panel[1],
             w=center_panel[2],
             h=center_panel[3],
-            label="AGENT ORCHESTRATION",
-            subtitle="Domain agents with dedicated endpoints",
+            label="DOMAIN AGENTS",
+            subtitle="Five focused agents; no central router",
             accent="#2563eb",
         )
         + _panel(
             x=right_panel[0],
             y=right_panel[1],
             w=right_panel[2],
-            h=right_panel[3],
-            label="DATA & INTEGRATIONS",
-            subtitle="External providers, persistence, and outbound communication",
+            h=left_panel[3],
+            label="DATA & OPERATIONS",
+            subtitle="Domain data, shared services, and outbound channels",
             accent="#0f766e",
         )
     )
@@ -379,7 +382,7 @@ def render_architecture_svg() -> str:
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{SVG_WIDTH}" height="{SVG_HEIGHT}"
 viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" role="img" aria-labelledby="title desc">
   <title id="title">Airbnb Business Agent system architecture</title>
-  <desc id="desc">A multi-agent architecture with review, market watch, analyst, pricing, and mail agents connected to platform services and external integrations.</desc>
+  <desc id="desc">A direct-endpoint multi-agent architecture where each console calls its dedicated agent, with shared LLM infrastructure and domain-specific data integrations.</desc>
   <defs>
     <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#f8fbff"/>
@@ -387,7 +390,7 @@ viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" role="img" aria-labelledby="title desc">
       <stop offset="100%" stop-color="#eef6ff"/>
     </linearGradient>
     <linearGradient id="haloGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#dbeafe" stop-opacity="0.8"/>
+      <stop offset="0%" stop-color="#dbeafe" stop-opacity="0.76"/>
       <stop offset="100%" stop-color="#dbeafe" stop-opacity="0"/>
     </linearGradient>
     <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -403,30 +406,33 @@ viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" role="img" aria-labelledby="title desc">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a"/>
     </marker>
     <pattern id="dotGrid" width="28" height="28" patternUnits="userSpaceOnUse">
-      <circle cx="2" cy="2" r="1.3" fill="#cbd5e1" opacity="0.28"/>
+      <circle cx="2" cy="2" r="1.3" fill="#cbd5e1" opacity="0.24"/>
     </pattern>
   </defs>
 
   <rect width="{SVG_WIDTH}" height="{SVG_HEIGHT}" fill="url(#bgGradient)"/>
   <rect width="{SVG_WIDTH}" height="{SVG_HEIGHT}" fill="url(#dotGrid)"/>
-  <ellipse cx="1280" cy="170" rx="480" ry="170" fill="url(#haloGradient)" opacity="0.8"/>
+  <ellipse cx="980" cy="170" rx="360" ry="150" fill="url(#haloGradient)" opacity="0.92"/>
 
   <g>
-    <text x="60" y="72" font-size="36" font-weight="800" fill="#0f172a">Airbnb Business Agent</text>
-    <text x="60" y="110" font-size="20" font-weight="500" fill="#475569">
-      Multi-agent platform for reviews, market intelligence, analysis, pricing, and inbox operations
+    <text x="52" y="74" font-size="38" font-weight="800" fill="#0f172a">Airbnb Business Agent</text>
+    <text x="52" y="114" font-size="20" font-weight="500" fill="#475569">
+      Direct endpoint flow: page -> agent -> data and operations
     </text>
   </g>
 
-  <g transform="translate(1315 46)">
-    <rect x="0" y="0" width="500" height="92" rx="24" fill="#ffffff" fill-opacity="0.72" stroke="#dbe4ee"/>
-    <text x="28" y="30" font-size="14" font-weight="800" letter-spacing="2" fill="#334155">FLOW LEGEND</text>
-    <line x1="28" y1="56" x2="88" y2="56" stroke="#2563eb" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowControl)"/>
-    <text x="102" y="61" font-size="16" font-weight="500" fill="#475569">request routing</text>
-    <line x1="218" y1="56" x2="278" y2="56" stroke="#64748b" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowData)"/>
-    <text x="292" y="61" font-size="16" font-weight="500" fill="#475569">data dependency</text>
-    <line x1="28" y1="78" x2="88" y2="78" stroke="#16a34a" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowSchedule)"/>
-    <text x="102" y="83" font-size="16" font-weight="500" fill="#475569">autonomous trigger</text>
+  <g transform="translate(52 140)">
+    <rect x="0" y="0" width="640" height="46" rx="18" fill="#ffffff" fill-opacity="0.78" stroke="#dbe4ee"/>
+    <circle cx="20" cy="23" r="6" fill="#2563eb"/>
+    <text x="36" y="28" font-size="17" font-weight="600" fill="#334155">No router layer. Each console owns its endpoint and talks to one domain agent.</text>
+  </g>
+
+  <g transform="translate(932 138)">
+    <rect x="0" y="0" width="336" height="62" rx="20" fill="#ffffff" fill-opacity="0.76" stroke="#dbe4ee"/>
+    <line x1="22" y1="22" x2="74" y2="22" stroke="#2563eb" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowControl)"/>
+    <text x="88" y="27" font-size="15" font-weight="500" fill="#475569">direct request path</text>
+    <line x1="22" y1="42" x2="74" y2="42" stroke="#64748b" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowData)"/>
+    <text x="88" y="47" font-size="15" font-weight="500" fill="#475569">data dependency / shared service</text>
   </g>
 
   {panels_svg}
@@ -434,7 +440,7 @@ viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" role="img" aria-labelledby="title desc">
   <g opacity="0.98">
     {"".join(control_routes)}
     {"".join(data_routes)}
-    {scheduler_route}
+    {"".join(automation_routes)}
   </g>
 
   {boxes_svg}

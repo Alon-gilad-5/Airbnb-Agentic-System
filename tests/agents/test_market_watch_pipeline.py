@@ -1,15 +1,16 @@
-"""Node-level unit tests for the market-watch LangGraph StateGraph."""
+"""Node-level unit tests for the market-watch pipeline."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta, date
+from datetime import date, timedelta
 from typing import Any
 
-import pytest
-
-from app.agents.market_watch_graph import build_market_watch_graph, NO_EVIDENCE_RESPONSE
-from app.agents.market_watch_agent import MarketWatchAgentConfig
+from app.agents.market_watch_agent import (
+    NO_EVIDENCE_RESPONSE,
+    MarketWatchAgentConfig,
+    MarketWatchPipeline,
+)
 from app.services.market_data_providers import NearbyEvent, PublicHoliday, WeatherForecastDay
 
 
@@ -54,20 +55,20 @@ def _build(
     weather: list[WeatherForecastDay] | None = None,
     events: list[NearbyEvent] | None = None,
     holidays: list[PublicHoliday] | None = None,
-) -> tuple[Any, _DummyAlertStore]:
+) -> tuple[MarketWatchPipeline, _DummyAlertStore]:
     store = _DummyAlertStore()
     cfg = MarketWatchAgentConfig()
-    graph = build_market_watch_graph(
+    pipeline = MarketWatchPipeline(
         providers=_DummyProviders(weather=weather, events=events, holidays=holidays),
         alert_store=store,
         config=cfg,
     )
-    return graph, store
+    return pipeline, store
 
 
 def test_missing_coordinates_early_exit() -> None:
-    graph, _ = _build()
-    result = graph.invoke({"prompt": "events?", "context": {}, "persist_alerts": False, "steps": []})
+    pipeline, _ = _build()
+    result = pipeline.invoke({"prompt": "events?", "context": {}, "persist_alerts": False, "steps": []})
     assert result["answer"] == NO_EVIDENCE_RESPONSE
     module_names = {s.module for s in result["steps"]}
     assert "market_watch_agent.signal_collection" in module_names
@@ -75,8 +76,8 @@ def test_missing_coordinates_early_exit() -> None:
 
 
 def test_empty_signals_returns_no_evidence() -> None:
-    graph, _ = _build()
-    result = graph.invoke({
+    pipeline, _ = _build()
+    result = pipeline.invoke({
         "prompt": "events?",
         "context": {"latitude": 34.05, "longitude": -118.24},
         "persist_alerts": False,
@@ -100,8 +101,8 @@ def test_weather_alert_generated_for_high_wind() -> None:
             snowfall_cm=0.0,
         ),
     ]
-    graph, _ = _build(weather=weather)
-    result = graph.invoke({
+    pipeline, _ = _build(weather=weather)
+    result = pipeline.invoke({
         "prompt": "weather?",
         "context": {"latitude": 34.05, "longitude": -118.24},
         "persist_alerts": False,
@@ -121,8 +122,8 @@ def test_persist_alerts_inserts_into_store() -> None:
     weather = [
         WeatherForecastDay(day=tomorrow, weather_code=0, temp_max_c=25.0, temp_min_c=15.0, wind_kph_max=60.0, precipitation_mm=5.0, snowfall_cm=0.0),
     ]
-    graph, store = _build(weather=weather)
-    result = graph.invoke({
+    pipeline, store = _build(weather=weather)
+    result = pipeline.invoke({
         "prompt": "autonomous market watch cycle",
         "context": {"latitude": 34.05, "longitude": -118.24, "property_id": "p-1"},
         "persist_alerts": True,
@@ -141,8 +142,8 @@ def test_on_demand_mode_skips_persistence() -> None:
     weather = [
         WeatherForecastDay(day=tomorrow, weather_code=0, temp_max_c=25.0, temp_min_c=15.0, wind_kph_max=60.0, precipitation_mm=5.0, snowfall_cm=0.0),
     ]
-    graph, store = _build(weather=weather)
-    result = graph.invoke({
+    pipeline, store = _build(weather=weather)
+    result = pipeline.invoke({
         "prompt": "weather?",
         "context": {"latitude": 34.05, "longitude": -118.24},
         "persist_alerts": False,
@@ -155,7 +156,7 @@ def test_on_demand_mode_skips_persistence() -> None:
 
 
 def test_all_module_names_are_valid() -> None:
-    """Every step module produced by the graph must be in the known set."""
+    """Every step module produced by the pipeline must be in the known set."""
     valid_modules = {
         "market_watch_agent.signal_collection",
         "market_watch_agent.weather_analysis",
@@ -167,8 +168,8 @@ def test_all_module_names_are_valid() -> None:
     }
     tomorrow = date.today() + timedelta(days=1)
     weather = [WeatherForecastDay(day=tomorrow, weather_code=0, temp_max_c=25.0, temp_min_c=15.0, wind_kph_max=60.0, precipitation_mm=5.0, snowfall_cm=0.0)]
-    graph, _ = _build(weather=weather)
-    result = graph.invoke({
+    pipeline, _ = _build(weather=weather)
+    result = pipeline.invoke({
         "prompt": "weather?",
         "context": {"latitude": 34.05, "longitude": -118.24},
         "persist_alerts": False,

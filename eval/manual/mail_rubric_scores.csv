@@ -1,0 +1,8 @@
+case_id,split,grounding,actionability,tone_policy_safety,notes
+mail_dev_001,dev,,,,
+mail_dev_002,dev,,,,
+mail_dev_003,dev,,,,
+mail_test_001,test,2,2,2,
+mail_test_002,test,2,2,2,
+mail_test_003,test,2,2,2,
+mail_test_004,test,2,2,2,

@@ -57,6 +57,10 @@ from app.schemas import (
     PricingResponse,
     PropertyProfileResponse,
     PropertyProfilesResponse,
+    RubricLabelCase,
+    RubricLabelingDataResponse,
+    RubricLabelSaveRequest,
+    RubricLabelSaveResponse,
     StepLog,
     ThresholdLabelCandidate,
     ThresholdLabelCase,
@@ -105,6 +109,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 THRESHOLD_LABEL_POOL_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_label_pool.jsonl"
 THRESHOLD_GOLD_PATH = BASE_DIR.parent / "outputs" / "reviews_threshold_gold.csv"
+EVAL_RESULTS_SUMMARY_PATH = BASE_DIR.parent / "outputs" / "eval" / "results_summary.json"
+RUBRIC_REVIEWS_CASES_PATH = BASE_DIR.parent / "eval" / "cases" / "reviews_cases.jsonl"
+RUBRIC_MAIL_CASES_PATH = BASE_DIR.parent / "eval" / "cases" / "mail_cases.jsonl"
+RUBRIC_REVIEWS_CSV_PATH = BASE_DIR.parent / "eval" / "manual" / "reviews_rubric_scores.csv"
+RUBRIC_MAIL_CSV_PATH = BASE_DIR.parent / "eval" / "manual" / "mail_rubric_scores.csv"
 VALID_CHAT_PROVIDERS = {"llmod", "openrouter"}
 PROPERTY_REVIEW_VOLUME_LABELS = {
     "42409434": "Many reviews",
@@ -582,6 +591,578 @@ def _write_threshold_gold_rows(rows: list[dict[str, str]]) -> None:
     temp_path.replace(THRESHOLD_GOLD_PATH)
 
 
+def _load_jsonl_rows(path: Path) -> list[dict[str, object]]:
+    """Load generic JSONL rows from disk."""
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+    rows: list[dict[str, object]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Invalid JSONL in {path} at line {line_no}: {exc}",
+                ) from exc
+            if isinstance(payload, dict):
+                rows.append(payload)
+    return rows
+
+
+def _rubric_paths_for_source(source: Literal["reviews", "mail"]) -> tuple[Path, Path]:
+    """Resolve case and score CSV paths for one rubric source."""
+
+    if source == "reviews":
+        return RUBRIC_REVIEWS_CASES_PATH, RUBRIC_REVIEWS_CSV_PATH
+    return RUBRIC_MAIL_CASES_PATH, RUBRIC_MAIL_CSV_PATH
+
+
+def _parse_rubric_score(raw: str | None) -> int | None:
+    """Parse 0/1/2 rubric score values from CSV text."""
+
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if text == "":
+        return None
+    if text not in {"0", "1", "2"}:
+        return None
+    return int(text)
+
+
+def _load_rubric_rows(
+    source: Literal["reviews", "mail"],
+) -> tuple[list[dict[str, str]], dict[tuple[str, str], dict[str, object]]]:
+    """Load rubric CSV rows for one source, indexed by (case_id, split)."""
+
+    _, csv_path = _rubric_paths_for_source(source)
+    rows: list[dict[str, str]] = []
+    by_key: dict[tuple[str, str], dict[str, object]] = {}
+    if not csv_path.exists():
+        return rows, by_key
+
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            case_id = str(row.get("case_id", "")).strip()
+            split = str(row.get("split", "")).strip().lower()
+            if not case_id or split not in {"dev", "test"}:
+                continue
+            clean = {
+                "case_id": case_id,
+                "split": split,
+                "grounding": str(row.get("grounding", "")).strip(),
+                "actionability": str(row.get("actionability", "")).strip(),
+                "tone_policy_safety": str(row.get("tone_policy_safety", "")).strip(),
+                "notes": str(row.get("notes", "")),
+            }
+            rows.append(clean)
+            by_key[(case_id, split)] = {
+                "grounding": _parse_rubric_score(clean["grounding"]),
+                "actionability": _parse_rubric_score(clean["actionability"]),
+                "tone_policy_safety": _parse_rubric_score(clean["tone_policy_safety"]),
+                "notes": clean["notes"],
+            }
+    return rows, by_key
+
+
+def _write_rubric_rows(path: Path, rows: list[dict[str, str]]) -> None:
+    """Write rubric CSV atomically."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    with temp_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["case_id", "split", "grounding", "actionability", "tone_policy_safety", "notes"],
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "case_id": str(row.get("case_id", "")).strip(),
+                    "split": str(row.get("split", "")).strip().lower(),
+                    "grounding": str(row.get("grounding", "")).strip(),
+                    "actionability": str(row.get("actionability", "")).strip(),
+                    "tone_policy_safety": str(row.get("tone_policy_safety", "")).strip(),
+                    "notes": str(row.get("notes", "")),
+                }
+            )
+    temp_path.replace(path)
+
+
+def _ensure_rubric_csv_seeded(source: Literal["reviews", "mail"]) -> None:
+    """Create rubric CSV from case JSONL when missing."""
+
+    cases_path, csv_path = _rubric_paths_for_source(source)
+    case_rows = _load_jsonl_rows(cases_path)
+    existing_rows, _ = _load_rubric_rows(source)
+    if not case_rows and csv_path.exists():
+        return
+
+    rows_by_key: dict[tuple[str, str], dict[str, str]] = {
+        (str(row.get("case_id", "")).strip(), str(row.get("split", "")).strip().lower()): {
+            "case_id": str(row.get("case_id", "")).strip(),
+            "split": str(row.get("split", "")).strip().lower(),
+            "grounding": str(row.get("grounding", "")).strip(),
+            "actionability": str(row.get("actionability", "")).strip(),
+            "tone_policy_safety": str(row.get("tone_policy_safety", "")).strip(),
+            "notes": str(row.get("notes", "")),
+        }
+        for row in existing_rows
+        if str(row.get("case_id", "")).strip() and str(row.get("split", "")).strip().lower() in {"dev", "test"}
+    }
+
+    ordered_keys: list[tuple[str, str]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    added_new = False
+    for case in case_rows:
+        case_id = str(case.get("case_id", "")).strip()
+        split = str(case.get("split", "")).strip().lower()
+        if not case_id or split not in {"dev", "test"}:
+            continue
+        key = (case_id, split)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        ordered_keys.append(key)
+        if key not in rows_by_key:
+            added_new = True
+            rows_by_key[key] = {
+                "case_id": case_id,
+                "split": split,
+                "grounding": "",
+                "actionability": "",
+                "tone_policy_safety": "",
+                "notes": "",
+            }
+
+    if csv_path.exists() and not added_new:
+        return
+
+    for key in sorted(rows_by_key.keys()):
+        if key not in seen_keys:
+            ordered_keys.append(key)
+            seen_keys.add(key)
+
+    _write_rubric_rows(
+        csv_path,
+        [rows_by_key[key] for key in ordered_keys],
+    )
+
+
+def _load_results_case_map() -> dict[tuple[str, str, str], dict[str, object]]:
+    """Index latest evaluation results by (source, case_id, split)."""
+
+    if not EVAL_RESULTS_SUMMARY_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(EVAL_RESULTS_SUMMARY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    out: dict[tuple[str, str, str], dict[str, object]] = {}
+    agents = payload.get("agents", {}) if isinstance(payload, dict) else {}
+    for source in ("reviews", "mail"):
+        agent_data = agents.get(source, {}) if isinstance(agents, dict) else {}
+        case_results = agent_data.get("case_results", []) if isinstance(agent_data, dict) else []
+        if not isinstance(case_results, list):
+            continue
+        for row in case_results:
+            if not isinstance(row, dict):
+                continue
+            case_id = str(row.get("case_id", "")).strip()
+            split = str(row.get("split", "")).strip().lower()
+            if not case_id or split not in {"dev", "test"}:
+                continue
+            out[(source, case_id, split)] = {
+                "pass_status": row.get("pass") if isinstance(row.get("pass"), bool) else None,
+                "failure_reason": (
+                    str(row.get("failure_reason"))
+                    if row.get("failure_reason") is not None
+                    else None
+                ),
+                "metadata": row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+            }
+    return out
+
+
+def _truncate_preview_text(text: str, max_chars: int = 240) -> str:
+    """Normalize + shorten long evidence text for compact rubric preview rendering."""
+
+    normalized = " ".join(str(text).split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 1].rstrip() + "…"
+
+
+def _load_reviews_pool_candidates() -> dict[str, list[dict[str, object]]]:
+    """Load candidate review snippets from threshold pool keyed by case_id."""
+
+    pool_candidates: dict[str, list[dict[str, object]]] = {}
+    pool_paths = [
+        BASE_DIR.parent / "outputs" / "reviews_threshold_label_pool_labeled20.jsonl",
+        THRESHOLD_LABEL_POOL_PATH,
+    ]
+    pool_path = next((path for path in pool_paths if path.exists()), None)
+    if pool_path is None:
+        return pool_candidates
+
+    try:
+        rows = _load_jsonl_rows(pool_path)
+    except Exception as exc:
+        logger.warning("Failed to load reviews threshold pool '%s': %s", pool_path, exc)
+        return pool_candidates
+
+    for row in rows:
+        case_id = str(row.get("case_id", "")).strip()
+        candidates = row.get("candidates")
+        if not case_id or not isinstance(candidates, list):
+            continue
+
+        normalized_candidates: list[dict[str, object]] = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            vector_id = str(candidate.get("vector_id", "")).strip()
+            if not vector_id:
+                continue
+            score_raw = candidate.get("score", 0.0)
+            try:
+                score = float(score_raw)
+            except (TypeError, ValueError):
+                score = 0.0
+            review_text = str(candidate.get("review_text", "")).strip()
+            normalized_candidates.append(
+                {
+                    "vector_id": vector_id,
+                    "score": score,
+                    "review_date": str(candidate.get("review_date", "")).strip() or None,
+                    "review_text_excerpt": _truncate_preview_text(review_text),
+                }
+            )
+
+        if normalized_candidates:
+            pool_candidates[case_id] = normalized_candidates
+
+    return pool_candidates
+
+
+def _infer_reviews_topic(*, prompt: str, tags: list[str]) -> str:
+    """Infer canonical topic label for deterministic draft generation."""
+
+    tag_values = {str(tag).strip().lower() for tag in tags if str(tag).strip()}
+    for candidate in (
+        "cleanliness",
+        "noise",
+        "wifi",
+        "checkin_host",
+        "value_for_money",
+    ):
+        if candidate in tag_values:
+            return candidate
+    prompt_l = prompt.lower()
+    if "clean" in prompt_l:
+        return "cleanliness"
+    if "noise" in prompt_l or "quiet" in prompt_l:
+        return "noise"
+    if "wifi" in prompt_l or "internet" in prompt_l:
+        return "wifi"
+    if "check-in" in prompt_l or "check in" in prompt_l or "communication" in prompt_l or "host" in prompt_l:
+        return "checkin_host"
+    if "value" in prompt_l or "price" in prompt_l or "money" in prompt_l:
+        return "value_for_money"
+    return "general"
+
+
+def _score_evidence_sentiment(snippets: list[str]) -> tuple[int, int]:
+    """Return rough positive/negative token counts from evidence snippets."""
+
+    positives = {
+        "clean", "great", "amazing", "comfortable", "friendly", "easy", "quiet",
+        "recommend", "responsive", "helpful", "value", "spacious", "private",
+    }
+    negatives = {
+        "dirty", "dusty", "loud", "noise", "mold", "mould", "issue", "problem",
+        "poor", "slow", "couldn't", "cannot", "bad", "complaint",
+    }
+    pos = 0
+    neg = 0
+    for snippet in snippets:
+        tokens = [token.strip(".,!?;:()[]{}\"'").lower() for token in snippet.split()]
+        for token in tokens:
+            if not token:
+                continue
+            if token in positives:
+                pos += 1
+            if token in negatives:
+                neg += 1
+    return pos, neg
+
+
+def _reviews_action_plan_for_topic(topic: str) -> list[str]:
+    """Return deterministic host actions by topic."""
+
+    action_map: dict[str, list[str]] = {
+        "cleanliness": [
+            "Keep a turnover checklist focused on bathroom, linens, and floor touch points.",
+            "Run a quick post-clean photo QA before each check-in.",
+            "Mention cleaning standards in listing text to reinforce guest expectations.",
+        ],
+        "noise": [
+            "Add or refresh quiet-hours guidance in house rules and check-in message.",
+            "Inspect doors/windows and add simple sound-dampening where possible.",
+            "Set expectation in listing about the local sound profile (street, neighbors, wildlife).",
+        ],
+        "wifi": [
+            "Run a speed and stability check between turnovers and log results.",
+            "Share router restart steps and network credentials clearly in the unit.",
+            "Keep a backup hotspot plan for outages and communicate it proactively.",
+        ],
+        "checkin_host": [
+            "Keep check-in instructions concise with photos and a fallback contact path.",
+            "Send a proactive arrival message with parking/access reminders.",
+            "Track repeated check-in questions and turn them into FAQ bullets.",
+        ],
+        "value_for_money": [
+            "Preserve high-impact amenities guests explicitly mention as value drivers.",
+            "Align pricing with local comps during peak dates while keeping core inclusions.",
+            "Clarify what is included to reduce surprise and improve perceived value.",
+        ],
+        "general": [
+            "Preserve strengths repeatedly mentioned in recent reviews.",
+            "Address recurring friction points with one concrete operational fix.",
+            "Update listing copy to align guest expectations with on-site reality.",
+        ],
+    }
+    return action_map.get(topic, action_map["general"])
+
+
+def _build_reviews_host_recommendation(
+    *,
+    prompt: str,
+    topic: str,
+    predicted_answer: bool | None,
+    selected_evidence: list[dict[str, object]],
+) -> str:
+    """Generate deterministic host-facing recommendation text for rubric scoring."""
+
+    if predicted_answer is False:
+        return (
+            "Host-facing recommendation (offline draft):\n"
+            "Insufficient reliable evidence for a confident answer on this prompt. "
+            "Collect more recent and topic-specific reviews before taking action."
+        )
+
+    snippets = [
+        str(item.get("review_text_excerpt", "")).strip()
+        for item in selected_evidence[:6]
+        if str(item.get("review_text_excerpt", "")).strip()
+    ]
+    pos, neg = _score_evidence_sentiment(snippets)
+    if pos >= (neg * 2) and pos >= 2:
+        stance = "Guest feedback is mostly positive on this topic."
+    elif neg >= (pos * 2) and neg >= 2:
+        stance = "Guest feedback shows recurring issues on this topic."
+    else:
+        stance = "Guest feedback is mixed, with both strengths and concerns."
+
+    topic_label = {
+        "checkin_host": "check-in and host communication",
+        "value_for_money": "value for money",
+    }.get(topic, topic)
+
+    lines = [
+        "Host-facing recommendation (offline draft):",
+        f"For \"{prompt}\", {stance} Topic focus: {topic_label}.",
+        "Recommended next actions:",
+    ]
+    for index, action in enumerate(_reviews_action_plan_for_topic(topic), start=1):
+        lines.append(f"{index}. {action}")
+
+    if snippets:
+        lines.append("Evidence used:")
+        for index, snippet in enumerate(snippets[:3], start=1):
+            lines.append(f"{index}. \"{snippet}\"")
+
+    lines.append(
+        "Draft is deterministic and evidence-grounded for offline evaluation; "
+        "use it as a scoring artifact, not as a production guest reply."
+    )
+    return "\n".join(lines)
+
+
+def _build_rubric_label_cases(
+    *,
+    split: Literal["dev", "test"] | None,
+    source: Literal["all", "reviews", "mail"],
+) -> tuple[list[RubricLabelCase], int]:
+    """Build rubric-labeling cases by joining case JSONL, score CSV, and latest results."""
+
+    sources: list[Literal["reviews", "mail"]]
+    if source == "all":
+        sources = ["reviews", "mail"]
+    else:
+        sources = [source]
+
+    results_map = _load_results_case_map()
+    reviews_pool_candidates = _load_reviews_pool_candidates() if "reviews" in sources else {}
+    all_cases: list[RubricLabelCase] = []
+    scored_cases = 0
+
+    for source_name in sources:
+        _ensure_rubric_csv_seeded(source_name)
+        cases_path, _ = _rubric_paths_for_source(source_name)
+        case_rows = _load_jsonl_rows(cases_path)
+        _, rubric_by_key = _load_rubric_rows(source_name)
+
+        for case_row in case_rows:
+            case_id = str(case_row.get("case_id", "")).strip()
+            row_split = str(case_row.get("split", "")).strip().lower()
+            if not case_id or row_split not in {"dev", "test"}:
+                continue
+            if split is not None and row_split != split:
+                continue
+            prompt_text = str(case_row.get("prompt", ""))
+            case_tags = [
+                str(tag).strip()
+                for tag in (case_row.get("tags") if isinstance(case_row.get("tags"), list) else [])
+                if str(tag).strip()
+            ]
+
+            key = (case_id, row_split)
+            rubric = rubric_by_key.get(key, {})
+            grounding = rubric.get("grounding") if isinstance(rubric.get("grounding"), int) else None
+            actionability = rubric.get("actionability") if isinstance(rubric.get("actionability"), int) else None
+            tone_policy_safety = (
+                rubric.get("tone_policy_safety")
+                if isinstance(rubric.get("tone_policy_safety"), int)
+                else None
+            )
+            notes = str(rubric.get("notes", "")).strip() or None
+            scored = grounding is not None and actionability is not None and tone_policy_safety is not None
+            if scored:
+                scored_cases += 1
+
+            result_info = results_map.get((source_name, case_id, row_split), {})
+            result_metadata_raw = (
+                result_info.get("metadata")
+                if isinstance(result_info.get("metadata"), dict)
+                else {}
+            )
+            result_metadata = dict(result_metadata_raw)
+            result_preview = None
+            if source_name == "mail":
+                result_preview = (
+                    str(result_metadata.get("draft_text") or result_metadata.get("response_text") or "").strip()
+                    or None
+                )
+            elif source_name == "reviews":
+                case_candidates = reviews_pool_candidates.get(case_id, [])
+                selected_ids = {
+                    str(vector_id).strip()
+                    for vector_id in (
+                        result_metadata.get("selected_vector_ids_preview")
+                        if isinstance(result_metadata.get("selected_vector_ids_preview"), list)
+                        else []
+                    )
+                    if str(vector_id).strip()
+                }
+                selected_evidence = [
+                    candidate
+                    for candidate in case_candidates
+                    if str(candidate.get("vector_id", "")).strip() in selected_ids
+                ]
+                if not selected_evidence:
+                    selected_evidence = sorted(
+                        case_candidates,
+                        key=lambda candidate: float(candidate.get("score", 0.0)),
+                        reverse=True,
+                    )[:3]
+                if case_candidates:
+                    result_metadata["candidate_count"] = len(case_candidates)
+                if selected_evidence:
+                    result_metadata["selected_evidence_preview"] = selected_evidence[:6]
+                topic = _infer_reviews_topic(prompt=prompt_text, tags=case_tags)
+                host_recommendation = _build_reviews_host_recommendation(
+                    prompt=prompt_text,
+                    topic=topic,
+                    predicted_answer=(
+                        result_metadata.get("predicted_answer")
+                        if isinstance(result_metadata.get("predicted_answer"), bool)
+                        else None
+                    ),
+                    selected_evidence=selected_evidence,
+                )
+                result_metadata["generated_host_recommendation"] = host_recommendation
+                result_metadata["generated_host_recommendation_type"] = "deterministic_offline_v1"
+                result_metadata["inferred_topic"] = topic
+
+                preview = (
+                    "predicted_answer="
+                    f"{result_metadata.get('predicted_answer')} | "
+                    f"selected_total={result_metadata.get('selected_total')} | "
+                    f"relevant_selected={result_metadata.get('relevant_selected')}"
+                )
+                if selected_evidence:
+                    lines = [
+                        preview,
+                        "",
+                        host_recommendation,
+                        "",
+                        "Evidence snippets:",
+                    ]
+                    for index, evidence in enumerate(selected_evidence[:3], start=1):
+                        score = float(evidence.get("score", 0.0))
+                        review_date = str(evidence.get("review_date") or "n/a")
+                        text_excerpt = str(evidence.get("review_text_excerpt") or "")
+                        lines.append(f"{index}. [{score:.3f} | {review_date}] {text_excerpt}")
+                    result_preview = "\n".join(lines)
+                else:
+                    result_preview = (
+                        "\n\n".join([preview, host_recommendation])
+                        if result_metadata
+                        else host_recommendation
+                    )
+
+            all_cases.append(
+                RubricLabelCase(
+                    source=source_name,
+                    case_id=case_id,
+                    split=row_split,  # type: ignore[arg-type]
+                    prompt=prompt_text,
+                    context=case_row.get("context") if isinstance(case_row.get("context"), dict) else {},
+                    expected=case_row.get("expected") if isinstance(case_row.get("expected"), dict) else {},
+                    tags=case_tags,
+                    pass_status=(
+                        result_info.get("pass_status")
+                        if isinstance(result_info.get("pass_status"), bool)
+                        else None
+                    ),
+                    failure_reason=(
+                        str(result_info.get("failure_reason"))
+                        if result_info.get("failure_reason") is not None
+                        else None
+                    ),
+                    result_metadata=result_metadata,
+                    result_preview=result_preview,
+                    grounding=grounding,
+                    actionability=actionability,
+                    tone_policy_safety=tone_policy_safety,
+                    notes=notes,
+                    scored=scored,
+                )
+            )
+
+    all_cases.sort(key=lambda item: (0 if item.split == "test" else 1, item.source, item.case_id))
+    return all_cases, scored_cases
+
+
 def _build_effective_context(payload: ExecuteRequest) -> dict[str, object]:
     """Merge request context over active-owner defaults from environment settings."""
 
@@ -927,6 +1508,13 @@ def labeling_ui(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("threshold_labeling.html", {"request": request})
 
 
+@app.get("/rubric_labeling", response_class=HTMLResponse)
+def rubric_labeling_ui(request: Request) -> HTMLResponse:
+    """UI for manual rubric scoring on reviews/mail evaluation cases."""
+
+    return templates.TemplateResponse("rubric_labeling.html", {"request": request})
+
+
 @app.get("/api/threshold_labeling/data", response_model=ThresholdLabelingDataResponse)
 def threshold_labeling_data() -> ThresholdLabelingDataResponse:
     """Return all labeling cases merged with existing gold labels."""
@@ -1011,6 +1599,145 @@ def threshold_labeling_save(payload: ThresholdLabelSaveRequest) -> ThresholdLabe
     _write_threshold_gold_rows([rows_by_case[case_id] for case_id in ordered_case_ids])
 
     return ThresholdLabelSaveResponse(status="ok", error=None, case_id=payload.case_id)
+
+
+@app.get("/api/rubric_labeling/data", response_model=RubricLabelingDataResponse)
+def rubric_labeling_data(
+    split: Literal["dev", "test"] | None = Query(default="test"),
+    source: Literal["all", "reviews", "mail"] = Query(default="all"),
+) -> RubricLabelingDataResponse:
+    """Return rubric-labeling cases merged with current score CSV and eval outputs."""
+
+    cases, scored_cases = _build_rubric_label_cases(split=split, source=source)
+    return RubricLabelingDataResponse(
+        status="ok",
+        error=None,
+        total_cases=len(cases),
+        scored_cases=scored_cases,
+        cases=cases,
+    )
+
+
+@app.post("/api/rubric_labeling/save", response_model=RubricLabelSaveResponse)
+def rubric_labeling_save(payload: RubricLabelSaveRequest) -> RubricLabelSaveResponse:
+    """Persist one rubric row to source-specific CSV."""
+
+    score_values = [payload.grounding, payload.actionability, payload.tone_policy_safety]
+    has_any_score = any(value is not None for value in score_values)
+    has_all_scores = all(value is not None for value in score_values)
+    if has_any_score and not has_all_scores:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide all three rubric scores (grounding/actionability/tone_policy_safety) or leave all empty.",
+        )
+
+    source = payload.source
+    split = payload.split
+    case_id = payload.case_id.strip()
+    if not case_id:
+        raise HTTPException(status_code=400, detail="case_id is required.")
+
+    try:
+        _ensure_rubric_csv_seeded(source)
+        cases_path, csv_path = _rubric_paths_for_source(source)
+        case_rows = _load_jsonl_rows(cases_path)
+        case_keys = {
+            (
+                str(row.get("case_id", "")).strip(),
+                str(row.get("split", "")).strip().lower(),
+            )
+            for row in case_rows
+            if str(row.get("case_id", "")).strip() and str(row.get("split", "")).strip().lower() in {"dev", "test"}
+        }
+        if (case_id, split) not in case_keys:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown rubric case: source={source} case_id={case_id} split={split}",
+            )
+
+        existing_rows, _ = _load_rubric_rows(source)
+        rows_by_key: dict[tuple[str, str], dict[str, str]] = {}
+        for row in existing_rows:
+            row_case_id = str(row.get("case_id", "")).strip()
+            row_split = str(row.get("split", "")).strip().lower()
+            if not row_case_id or row_split not in {"dev", "test"}:
+                continue
+            rows_by_key[(row_case_id, row_split)] = {
+                "case_id": row_case_id,
+                "split": row_split,
+                "grounding": str(row.get("grounding", "")).strip(),
+                "actionability": str(row.get("actionability", "")).strip(),
+                "tone_policy_safety": str(row.get("tone_policy_safety", "")).strip(),
+                "notes": str(row.get("notes", "")),
+            }
+
+        clean_notes = (payload.notes or "").strip()
+        rows_by_key[(case_id, split)] = {
+            "case_id": case_id,
+            "split": split,
+            "grounding": (str(payload.grounding) if payload.grounding is not None else ""),
+            "actionability": (str(payload.actionability) if payload.actionability is not None else ""),
+            "tone_policy_safety": (str(payload.tone_policy_safety) if payload.tone_policy_safety is not None else ""),
+            "notes": clean_notes,
+        }
+
+        ordered_keys: list[tuple[str, str]] = []
+        seen_keys: set[tuple[str, str]] = set()
+        for row in case_rows:
+            row_case_id = str(row.get("case_id", "")).strip()
+            row_split = str(row.get("split", "")).strip().lower()
+            if not row_case_id or row_split not in {"dev", "test"}:
+                continue
+            key = (row_case_id, row_split)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            ordered_keys.append(key)
+        for key in sorted(rows_by_key.keys()):
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            ordered_keys.append(key)
+
+        _write_rubric_rows(csv_path, [rows_by_key[key] for key in ordered_keys if key in rows_by_key])
+    except HTTPException:
+        raise
+    except PermissionError as exc:
+        logger.exception(
+            "rubric_labeling_save permission error source=%s case_id=%s split=%s",
+            source,
+            case_id,
+            split,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to persist rubric scores because the CSV file is locked or not writable. "
+                f"Close any app using the file and retry. ({type(exc).__name__}: {exc})"
+            ),
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "rubric_labeling_save failed source=%s case_id=%s split=%s",
+            source,
+            case_id,
+            split,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to persist rubric scores: "
+                f"{type(exc).__name__}: {exc}"
+            ),
+        ) from exc
+    return RubricLabelSaveResponse(
+        status="ok",
+        error=None,
+        source=source,
+        case_id=case_id,
+        split=split,
+        scored=has_all_scores,
+    )
 
 
 @app.get("/api/team_info", response_model=TeamInfoResponse)

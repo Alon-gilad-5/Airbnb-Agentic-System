@@ -1,14 +1,15 @@
-"""Node-level unit tests for the reviews LangGraph StateGraph."""
+"""Node-level unit tests for the reviews pipeline."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-import pytest
-
-from app.agents.reviews_graph import build_reviews_graph, NO_EVIDENCE_RESPONSE
-from app.agents.reviews_agent import ReviewsAgentConfig
+from app.agents.reviews_agent import (
+    NO_EVIDENCE_RESPONSE,
+    ReviewsAgentConfig,
+    ReviewsPipeline,
+)
 from app.services.pinecone_retriever import RetrievedReview
 from app.services.web_review_ingest import WebIngestResult
 from app.services.web_review_scraper import ScrapedReview
@@ -65,9 +66,9 @@ def _build(
     retriever_available: bool = True,
     chat_available: bool = True,
     chat_response: str = "LLM answer.",
-) -> Any:
+) -> ReviewsPipeline:
     cfg = ReviewsAgentConfig(relevance_score_threshold=0.40)
-    return build_reviews_graph(
+    return ReviewsPipeline(
         embedding_service=_DummyEmbedding(is_available=embedding_available),
         retriever=_DummyRetriever(is_available=retriever_available, _matches=matches),
         chat_service=_DummyChat(is_available=chat_available, _response=chat_response),
@@ -77,16 +78,16 @@ def _build(
     )
 
 
-def test_graph_no_matches_returns_no_evidence() -> None:
-    graph = _build(matches=[])
-    result = graph.invoke({"prompt": "wifi quality?", "context": {}, "steps": []})
+def test_pipeline_no_matches_returns_no_evidence() -> None:
+    pipeline = _build(matches=[])
+    result = pipeline.invoke({"prompt": "wifi quality?", "context": {}, "steps": []})
     assert result["final_answer"] == NO_EVIDENCE_RESPONSE
     module_names = {s.module for s in result["steps"]}
     assert "reviews_agent.retrieval" in module_names
     assert "reviews_agent.evidence_guard" in module_names
 
 
-def test_graph_with_matches_produces_answer_steps() -> None:
+def test_pipeline_with_matches_produces_answer_steps() -> None:
     matches = [
         RetrievedReview(vector_id="v1", score=0.85, metadata={
             "review_text": "Wifi was excellent.", "property_id": "p1", "region": "la",
@@ -98,8 +99,8 @@ def test_graph_with_matches_produces_answer_steps() -> None:
             "review_text": "Wifi worked well.", "property_id": "p1", "region": "la",
         }),
     ]
-    graph = _build(matches=matches)
-    result = graph.invoke({"prompt": "wifi quality?", "context": {}, "steps": []})
+    pipeline = _build(matches=matches)
+    result = pipeline.invoke({"prompt": "wifi quality?", "context": {}, "steps": []})
     assert result["final_answer"]
     assert len(result["final_answer"]) > 0
     module_names = [s.module for s in result["steps"]]
@@ -109,19 +110,19 @@ def test_graph_with_matches_produces_answer_steps() -> None:
     assert "reviews_agent.hallucination_guard" in module_names
 
 
-def test_graph_embedding_unavailable_early_exit() -> None:
-    graph = _build(embedding_available=False)
-    result = graph.invoke({"prompt": "wifi?", "context": {}, "steps": []})
+def test_pipeline_embedding_unavailable_early_exit() -> None:
+    pipeline = _build(embedding_available=False)
+    result = pipeline.invoke({"prompt": "wifi?", "context": {}, "steps": []})
     assert "Embedding service is not configured" in result["final_answer"]
 
 
-def test_graph_retriever_unavailable_early_exit() -> None:
-    graph = _build(retriever_available=False)
-    result = graph.invoke({"prompt": "wifi?", "context": {}, "steps": []})
+def test_pipeline_retriever_unavailable_early_exit() -> None:
+    pipeline = _build(retriever_available=False)
+    result = pipeline.invoke({"prompt": "wifi?", "context": {}, "steps": []})
     assert "Pinecone is not configured" in result["final_answer"]
 
 
-def test_graph_chat_unavailable_uses_deterministic_summary() -> None:
+def test_pipeline_chat_unavailable_uses_deterministic_summary() -> None:
     matches = [
         RetrievedReview(vector_id="v1", score=0.85, metadata={
             "review_text": "Wifi was great.", "property_id": "p1", "region": "la",
@@ -133,25 +134,25 @@ def test_graph_chat_unavailable_uses_deterministic_summary() -> None:
             "review_text": "Worked fine.", "property_id": "p1", "region": "la",
         }),
     ]
-    graph = _build(matches=matches, chat_available=False)
-    result = graph.invoke({"prompt": "wifi?", "context": {}, "steps": []})
+    pipeline = _build(matches=matches, chat_available=False)
+    result = pipeline.invoke({"prompt": "wifi?", "context": {}, "steps": []})
     assert "LLM synthesis service is currently unavailable" in result["final_answer"]
 
 
-def test_graph_thin_evidence_adds_disclaimer() -> None:
+def test_pipeline_thin_evidence_adds_disclaimer() -> None:
     matches = [
         RetrievedReview(vector_id="v1", score=0.85, metadata={
             "review_text": "Wifi was ok.", "property_id": "p1", "region": "la",
         }),
     ]
-    graph = _build(matches=matches)
-    result = graph.invoke({"prompt": "wifi?", "context": {}, "steps": []})
+    pipeline = _build(matches=matches)
+    result = pipeline.invoke({"prompt": "wifi?", "context": {}, "steps": []})
     assert "Evidence is limited" in result["final_answer"]
 
 
-def test_graph_metadata_filter_with_property_and_region() -> None:
-    graph = _build(matches=[])
-    result = graph.invoke({
+def test_pipeline_metadata_filter_with_property_and_region() -> None:
+    pipeline = _build(matches=[])
+    result = pipeline.invoke({
         "prompt": "wifi?",
         "context": {"property_id": "p-123", "region": "  SAN FRANCISCO  "},
         "steps": [],
@@ -167,15 +168,15 @@ def test_graph_metadata_filter_with_property_and_region() -> None:
     }
 
 
-def test_graph_fallback_scraper_disabled_produces_skip_steps() -> None:
+def test_pipeline_fallback_scraper_disabled_produces_skip_steps() -> None:
     """When fallback triggers but scraper is disabled, skip steps are produced."""
     matches = [
         RetrievedReview(vector_id="v1", score=0.20, metadata={
             "review_text": "Irrelevant.", "property_id": "p1", "region": "la",
         }),
     ]
-    graph = _build(matches=matches)
-    result = graph.invoke({"prompt": "wifi?", "context": {}, "steps": []})
+    pipeline = _build(matches=matches)
+    result = pipeline.invoke({"prompt": "wifi?", "context": {}, "steps": []})
     web_scrape_steps = [s for s in result["steps"] if s.module == "reviews_agent.web_scrape"]
     assert len(web_scrape_steps) == 1
     assert web_scrape_steps[0].response["status"] == "skipped"

@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rubric Labeling</title>
+  <style>
+    :root {
+      --bg-1: #edf2f7;
+      --bg-2: #f8fafc;
+      --panel: #ffffff;
+      --ink: #142330;
+      --muted: #4f6476;
+      --accent: #0f766e;
+      --accent-strong: #0d5f58;
+      --accent-soft: #e3f5f3;
+      --border: #c7d8e5;
+      --ok: #0f766e;
+      --warn: #b23a2a;
+      --pending-bg: #fff8db;
+      --pending-ink: #8a5a00;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Aptos", "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 6%, #dbeafe 0%, transparent 40%),
+        radial-gradient(circle at 86% 88%, #dcfce7 0%, transparent 34%),
+        linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+      padding: 16px;
+    }
+    .shell {
+      max-width: 1840px;
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+    h1, h2, h3, h4, p { margin: 0; }
+    .muted { color: var(--muted); margin: 0; }
+    .topbar {
+      display: grid;
+      gap: 12px;
+    }
+    .topbar-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+    }
+    .topbar h1 {
+      font-size: 1.9rem;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+    .topbar .subtitle {
+      margin-top: 6px;
+      max-width: 820px;
+      line-height: 1.4;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(92px, auto));
+      gap: 8px;
+      align-items: end;
+    }
+    .controls label {
+      display: grid;
+      gap: 5px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    select, textarea, input[type="text"] {
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+    select:focus, textarea:focus, input[type="text"]:focus {
+      outline: 2px solid #bae6fd;
+      outline-offset: 1px;
+      border-color: #7dd3fc;
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    .stats {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      background: #f2f8fc;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      color: #234256;
+    }
+    .workspace {
+      min-height: 78vh;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr) 360px;
+      gap: 12px;
+    }
+    .cases-panel {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 8px;
+      min-height: 0;
+    }
+    .cases-panel .hint {
+      font-size: 0.86rem;
+      color: var(--muted);
+    }
+    .case-list {
+      display: grid;
+      gap: 8px;
+      overflow: auto;
+      padding-right: 4px;
+      align-content: start;
+    }
+    .case-btn {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: #fbfdff;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 10px;
+      cursor: pointer;
+      transition: border-color .15s ease, transform .12s ease, background .15s ease;
+    }
+    .case-btn:hover {
+      border-color: #9ec9dd;
+      transform: translateY(-1px);
+    }
+    .case-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .case-title {
+      margin: 0 0 4px 0;
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+    .case-line {
+      margin: 0;
+      font-size: 0.79rem;
+      color: var(--muted);
+    }
+    .case-state {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+    .state-scored {
+      color: var(--ok);
+      border-color: #76c6bb;
+      background: #e8fbf7;
+    }
+    .state-pending {
+      color: var(--pending-ink);
+      border-color: #e2c068;
+      background: var(--pending-bg);
+    }
+    .content-panel {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 10px;
+      min-height: 0;
+    }
+    .detail-main {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      min-height: 0;
+    }
+    .prompt-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: linear-gradient(180deg, #f9fcff 0%, #f4fbff 100%);
+      padding: 11px;
+      display: grid;
+      gap: 8px;
+    }
+    .prompt-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #2d4f63;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .prompt {
+      font-size: 1.03rem;
+      line-height: 1.45;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      white-space: pre-wrap;
+    }
+    .meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .data-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .data-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fbfdff;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      min-height: 0;
+    }
+    .data-card h4 {
+      font-size: 0.88rem;
+      color: #2d4f63;
+      letter-spacing: 0.02em;
+    }
+    pre, .preview-box {
+      margin: 0;
+      overflow: auto;
+      max-height: 270px;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      border: 1px solid #d9e7f1;
+      border-radius: 9px;
+      background: #f7fbff;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .preview-box {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .score-panel {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: linear-gradient(180deg, #f8fffd 0%, #f2fbfa 100%);
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      position: sticky;
+      top: 12px;
+      height: fit-content;
+    }
+    .score-panel h3 {
+      font-size: 1.08rem;
+    }
+    .score-help {
+      font-size: 0.84rem;
+      color: #356072;
+      line-height: 1.4;
+    }
+    .score-total {
+      font-size: 0.86rem;
+      color: #21485b;
+      background: #ecf8f7;
+      border: 1px solid #b9ddd9;
+      border-radius: 9px;
+      padding: 7px 9px;
+    }
+    .scoring {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr;
+    }
+    .score-field {
+      display: grid;
+      gap: 5px;
+    }
+    .score-field label {
+      font-size: 0.86rem;
+      color: #355a69;
+      font-weight: 600;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 9px 14px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(15, 118, 110, 0.22);
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(15, 118, 110, 0.28);
+    }
+    button.secondary {
+      background: #eef6fb;
+      border: 1px solid var(--border);
+      color: #20445b;
+      box-shadow: none;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .status {
+      min-height: 1.25rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .status.error { color: var(--warn); }
+    .status.ok { color: var(--ok); }
+    @media (max-width: 1560px) {
+      .workspace { grid-template-columns: 300px minmax(0, 1fr) 330px; }
+    }
+    @media (max-width: 1320px) {
+      .workspace { grid-template-columns: 280px minmax(0, 1fr); }
+      .score-panel { position: static; }
+      .content-panel { grid-column: 2; }
+      .score-panel { grid-column: 2; }
+    }
+    @media (max-width: 980px) {
+      .topbar-main { grid-template-columns: 1fr; }
+      .controls {
+        grid-template-columns: 1fr 1fr;
+        justify-items: start;
+      }
+      .workspace { grid-template-columns: 1fr; }
+      .data-grid { grid-template-columns: 1fr; }
+      .case-list { max-height: 240px; }
+      .topbar h1 { font-size: 1.65rem; }
+    }
+    @media (max-width: 620px) {
+      .controls { grid-template-columns: 1fr; }
+      .toolbar { display: grid; grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="card topbar">
+      <div class="topbar-main">
+        <div>
+          <h1>Results Rubric Labeling</h1>
+          <p class="muted subtitle">Score reviews and mail cases with the 0/1/2 rubric and save directly to CSV. Test cases are shown first for faster paper reporting.</p>
+        </div>
+        <div class="controls">
+          <label>
+            Source
+            <select id="sourceFilter">
+              <option value="all">all</option>
+              <option value="reviews">reviews</option>
+              <option value="mail">mail</option>
+            </select>
+          </label>
+          <label>
+            Split
+            <select id="splitFilter">
+              <option value="test">test</option>
+              <option value="dev">dev</option>
+            </select>
+          </label>
+          <button id="reloadBtn" class="secondary" type="button">Reload</button>
+        </div>
+      </div>
+      <div class="stats">
+        <span class="pill" id="statCount">Cases: 0</span>
+        <span class="pill" id="statDone">Scored: 0</span>
+        <span class="pill" id="statProgress">Progress: 0%</span>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <aside class="card cases-panel">
+        <h3>Cases</h3>
+        <p class="hint">Pick a case to score.</p>
+        <div class="case-list" id="caseList"></div>
+      </aside>
+
+      <section class="card content-panel">
+        <div class="detail-main">
+          <div class="prompt-card">
+            <div class="prompt-label">Prompt</div>
+            <div class="prompt" id="promptText">Loading...</div>
+          </div>
+          <div class="meta" id="meta"></div>
+
+          <div class="data-grid">
+            <div class="data-card">
+              <h4>Context</h4>
+              <pre id="contextJson">{}</pre>
+            </div>
+            <div class="data-card">
+              <h4>Expected</h4>
+              <pre id="expectedJson">{}</pre>
+            </div>
+          </div>
+
+          <div class="data-grid">
+            <div class="data-card">
+              <h4>Result Preview</h4>
+              <div id="resultPreview" class="preview-box">n/a</div>
+            </div>
+            <div class="data-card">
+              <h4>Result Metadata</h4>
+              <pre id="resultMetadata">{}</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card score-panel">
+        <h3>Rubric Scoring</h3>
+        <div class="score-help">
+          0 = weak, 1 = partial, 2 = strong. Set all three scores together or leave all empty.
+        </div>
+        <div class="score-total" id="scoreTotal">Total: -- / 6</div>
+        <div class="scoring">
+          <div class="score-field">
+            <label for="groundingSelect">Grounding (0-2)</label>
+            <select id="groundingSelect">
+              <option value="">--</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+            </select>
+          </div>
+          <div class="score-field">
+            <label for="actionabilitySelect">Actionability (0-2)</label>
+            <select id="actionabilitySelect">
+              <option value="">--</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+            </select>
+          </div>
+          <div class="score-field">
+            <label for="toneSelect">Tone/Policy Safety (0-2)</label>
+            <select id="toneSelect">
+              <option value="">--</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="score-field">
+          <span>Notes (optional)</span>
+          <textarea id="notesInput" placeholder="Any comments about why you scored this way."></textarea>
+        </label>
+
+        <div class="toolbar">
+          <button id="saveBtn" type="button">Save</button>
+          <button id="saveNextBtn" type="button">Save + Next</button>
+          <button id="clearBtn" class="secondary" type="button">Clear</button>
+          <button id="prevBtn" class="secondary" type="button">Prev</button>
+          <button id="nextBtn" class="secondary" type="button">Next</button>
+        </div>
+        <span class="status" id="status"></span>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      cases: [],
+      currentIndex: 0,
+      saving: false,
+      filters: { source: "all", split: "test" },
+    };
+
+    const caseListEl = document.getElementById("caseList");
+    const promptEl = document.getElementById("promptText");
+    const metaEl = document.getElementById("meta");
+    const contextEl = document.getElementById("contextJson");
+    const expectedEl = document.getElementById("expectedJson");
+    const resultPreviewEl = document.getElementById("resultPreview");
+    const resultMetadataEl = document.getElementById("resultMetadata");
+    const statusEl = document.getElementById("status");
+    const statCountEl = document.getElementById("statCount");
+    const statDoneEl = document.getElementById("statDone");
+    const statProgressEl = document.getElementById("statProgress");
+    const sourceFilterEl = document.getElementById("sourceFilter");
+    const splitFilterEl = document.getElementById("splitFilter");
+    const groundingEl = document.getElementById("groundingSelect");
+    const actionabilityEl = document.getElementById("actionabilitySelect");
+    const toneEl = document.getElementById("toneSelect");
+    const scoreTotalEl = document.getElementById("scoreTotal");
+    const notesEl = document.getElementById("notesInput");
+    const saveBtn = document.getElementById("saveBtn");
+    const saveNextBtn = document.getElementById("saveNextBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const reloadBtn = document.getElementById("reloadBtn");
+
+    function setStatus(text, kind = "") {
+      statusEl.className = `status ${kind}`.trim();
+      statusEl.textContent = text;
+    }
+
+    function currentCase() {
+      return state.cases[state.currentIndex] || null;
+    }
+
+    async function parseResponseBody(res, label) {
+      const raw = await res.text();
+      if (!raw || !raw.trim()) {
+        throw new Error(`${label}: empty response body (status ${res.status}).`);
+      }
+      try {
+        return JSON.parse(raw);
+      } catch (_err) {
+        const preview = raw.slice(0, 220).replace(/\s+/g, " ").trim();
+        throw new Error(`${label}: expected JSON but got "${preview}" (status ${res.status}).`);
+      }
+    }
+
+    function toScoreValue(raw) {
+      if (raw === "" || raw === null || raw === undefined) return null;
+      const n = Number(raw);
+      return Number.isInteger(n) ? n : null;
+    }
+
+    function renderScoreValue(value) {
+      if (value === null || value === undefined) return "";
+      return String(value);
+    }
+
+    function updateStats() {
+      const total = state.cases.length;
+      const done = state.cases.filter((item) => item.scored).length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      statCountEl.textContent = `Cases: ${total}`;
+      statDoneEl.textContent = `Scored: ${done}`;
+      statProgressEl.textContent = `Progress: ${pct}%`;
+    }
+
+    function updateScoreTotal() {
+      const values = [
+        toScoreValue(groundingEl.value),
+        toScoreValue(actionabilityEl.value),
+        toScoreValue(toneEl.value),
+      ];
+      if (values.some((v) => v === null)) {
+        scoreTotalEl.textContent = "Total: -- / 6";
+        return;
+      }
+      const total = values.reduce((sum, v) => sum + v, 0);
+      scoreTotalEl.textContent = `Total: ${total} / 6`;
+    }
+
+    function renderPill(text) {
+      const span = document.createElement("span");
+      span.className = "pill";
+      span.textContent = text;
+      return span;
+    }
+
+    function renderCaseList() {
+      caseListEl.innerHTML = "";
+      state.cases.forEach((item, index) => {
+        const btn = document.createElement("button");
+        btn.className = `case-btn${index === state.currentIndex ? " active" : ""}`;
+        btn.type = "button";
+        btn.addEventListener("click", () => {
+          state.currentIndex = index;
+          renderCaseList();
+          renderCaseDetail();
+          setStatus("");
+        });
+
+        const title = document.createElement("p");
+        title.className = "case-title";
+        title.textContent = `${item.case_id} (${item.source})`;
+        const line = document.createElement("p");
+        line.className = "case-line";
+        line.textContent = `split=${item.split} | tags=${(item.tags || []).join(", ") || "-"}`;
+        const stateTag = document.createElement("span");
+        stateTag.className = `case-state ${item.scored ? "state-scored" : "state-pending"}`;
+        stateTag.textContent = item.scored ? "Scored" : "Pending";
+
+        btn.appendChild(title);
+        btn.appendChild(line);
+        btn.appendChild(stateTag);
+        caseListEl.appendChild(btn);
+      });
+      updateStats();
+    }
+
+    function renderCaseDetail() {
+      const item = currentCase();
+      if (!item) {
+        promptEl.textContent = "No cases found for the selected filters.";
+        metaEl.innerHTML = "";
+        contextEl.textContent = "{}";
+        expectedEl.textContent = "{}";
+        resultPreviewEl.textContent = "n/a";
+        resultMetadataEl.textContent = "{}";
+        groundingEl.value = "";
+        actionabilityEl.value = "";
+        toneEl.value = "";
+        notesEl.value = "";
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        updateScoreTotal();
+        return;
+      }
+
+      promptEl.textContent = item.prompt || "(no prompt)";
+      metaEl.innerHTML = "";
+      metaEl.appendChild(renderPill(`Source: ${item.source}`));
+      metaEl.appendChild(renderPill(`Case: ${item.case_id}`));
+      metaEl.appendChild(renderPill(`Split: ${item.split}`));
+      metaEl.appendChild(renderPill(`Pass: ${item.pass_status === null ? "n/a" : String(item.pass_status)}`));
+      metaEl.appendChild(renderPill(`Failure: ${item.failure_reason || "none"}`));
+
+      contextEl.textContent = JSON.stringify(item.context || {}, null, 2);
+      expectedEl.textContent = JSON.stringify(item.expected || {}, null, 2);
+      resultPreviewEl.textContent = item.result_preview || "n/a";
+      resultMetadataEl.textContent = JSON.stringify(item.result_metadata || {}, null, 2);
+
+      groundingEl.value = renderScoreValue(item.grounding);
+      actionabilityEl.value = renderScoreValue(item.actionability);
+      toneEl.value = renderScoreValue(item.tone_policy_safety);
+      notesEl.value = item.notes || "";
+      updateScoreTotal();
+
+      prevBtn.disabled = state.currentIndex === 0;
+      nextBtn.disabled = state.currentIndex >= state.cases.length - 1;
+    }
+
+    async function loadData() {
+      setStatus("Loading cases...");
+      const qs = new URLSearchParams({
+        split: state.filters.split,
+        source: state.filters.source,
+      });
+      const res = await fetch(`/api/rubric_labeling/data?${qs.toString()}`);
+      const payload = await parseResponseBody(res, "Load failed");
+      if (!res.ok) {
+        throw new Error(payload.detail || payload.error || `Failed to load data (${res.status}).`);
+      }
+      state.cases = payload.cases || [];
+      state.currentIndex = 0;
+      renderCaseList();
+      renderCaseDetail();
+      setStatus("Ready.", "ok");
+    }
+
+    function collectScoresForSave() {
+      const grounding = toScoreValue(groundingEl.value);
+      const actionability = toScoreValue(actionabilityEl.value);
+      const tone = toScoreValue(toneEl.value);
+      const hasAny = [grounding, actionability, tone].some((v) => v !== null);
+      const hasAll = [grounding, actionability, tone].every((v) => v !== null);
+      if (hasAny && !hasAll) {
+        throw new Error("Set all 3 scores (0/1/2) or clear all 3.");
+      }
+      return {
+        grounding,
+        actionability,
+        tone_policy_safety: tone,
+      };
+    }
+
+    async function saveCurrentCase(goNext = false) {
+      if (state.saving) return;
+      const item = currentCase();
+      if (!item) return;
+
+      let scores;
+      try {
+        scores = collectScoresForSave();
+      } catch (err) {
+        setStatus(String(err), "error");
+        return;
+      }
+
+      const payload = {
+        source: item.source,
+        case_id: item.case_id,
+        split: item.split,
+        ...scores,
+        notes: (notesEl.value || "").trim(),
+      };
+
+      state.saving = true;
+      saveBtn.disabled = true;
+      saveNextBtn.disabled = true;
+      setStatus("Saving...");
+      try {
+        const res = await fetch("/api/rubric_labeling/save", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+        const body = await parseResponseBody(res, "Save failed");
+        if (!res.ok || body.status !== "ok") {
+          throw new Error(body.detail || body.error || `Save failed (${res.status})`);
+        }
+
+        item.grounding = payload.grounding;
+        item.actionability = payload.actionability;
+        item.tone_policy_safety = payload.tone_policy_safety;
+        item.notes = payload.notes || null;
+        item.scored = body.scored === true;
+        renderCaseList();
+        renderCaseDetail();
+        setStatus(`Saved ${item.case_id}.`, "ok");
+
+        if (goNext && state.currentIndex < state.cases.length - 1) {
+          state.currentIndex += 1;
+          renderCaseList();
+          renderCaseDetail();
+          setStatus(`Saved ${item.case_id}. Moved to next case.`, "ok");
+        }
+      } catch (err) {
+        setStatus(String(err), "error");
+      } finally {
+        state.saving = false;
+        saveBtn.disabled = false;
+        saveNextBtn.disabled = false;
+      }
+    }
+
+    saveBtn.addEventListener("click", () => saveCurrentCase(false));
+    saveNextBtn.addEventListener("click", () => saveCurrentCase(true));
+    clearBtn.addEventListener("click", () => {
+      groundingEl.value = "";
+      actionabilityEl.value = "";
+      toneEl.value = "";
+      updateScoreTotal();
+      setStatus("Scores cleared in form. Click Save to persist.", "ok");
+    });
+    prevBtn.addEventListener("click", () => {
+      if (state.currentIndex > 0) {
+        state.currentIndex -= 1;
+        renderCaseList();
+        renderCaseDetail();
+        setStatus("");
+      }
+    });
+    nextBtn.addEventListener("click", () => {
+      if (state.currentIndex < state.cases.length - 1) {
+        state.currentIndex += 1;
+        renderCaseList();
+        renderCaseDetail();
+        setStatus("");
+      }
+    });
+    reloadBtn.addEventListener("click", () => {
+      state.filters.source = sourceFilterEl.value;
+      state.filters.split = splitFilterEl.value;
+      loadData().catch((err) => setStatus(String(err), "error"));
+    });
+    sourceFilterEl.addEventListener("change", () => {
+      state.filters.source = sourceFilterEl.value;
+    });
+    splitFilterEl.addEventListener("change", () => {
+      state.filters.split = splitFilterEl.value;
+    });
+    groundingEl.addEventListener("change", updateScoreTotal);
+    actionabilityEl.addEventListener("change", updateScoreTotal);
+    toneEl.addEventListener("change", updateScoreTotal);
+
+    loadData().catch((err) => {
+      setStatus(String(err), "error");
+      promptEl.textContent = "Failed to load rubric labeling data.";
+    });
+  </script>
+</body>
+</html>
