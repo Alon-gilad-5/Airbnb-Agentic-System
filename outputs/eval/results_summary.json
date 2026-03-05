@@ -1,0 +1,1258 @@
+{
+  "generated_at_utc": "2026-03-05T16:08:48.667050+00:00",
+  "split": "test",
+  "agents": {
+    "reviews": {
+      "agent": "reviews",
+      "split": "test",
+      "primary_metric_name": "answer_decision_accuracy",
+      "primary_metric": 0.6667,
+      "metrics": {
+        "case_count": 18,
+        "answer_decision_accuracy": 0.6667,
+        "primary_metric_hits": 12,
+        "primary_metric_total": 18,
+        "evidence_precision": 0.1951,
+        "task_success_rate": 0.6667,
+        "task_success_passes": 12,
+        "task_success_total": 18,
+        "baseline_answer_decision_accuracy": 0.4444,
+        "baseline_evidence_precision": 0.075
+      },
+      "reliability": {
+        "crash_free_rate": 1.0,
+        "contract_pass_rate": 1.0,
+        "step_trace_completeness": 1.0,
+        "p95_latency_ms": 0.012
+      },
+      "task_success_rate": 0.6667,
+      "ablation": {
+        "baseline_threshold": 0.4,
+        "tuned_threshold": 0.48,
+        "winner_metrics_on_dev": {
+          "threshold": 0.48,
+          "objective_j": 0.8570368982019467,
+          "answer_precision": 0.918918918918919,
+          "answer_recall": 0.9714285714285714,
+          "evidence_precision": 0.5307443365695793,
+          "fp_answer_rate": 0.08108108108108109,
+          "tp_answer": 34,
+          "fp_answer": 3,
+          "fn_answer": 1,
+          "tn_answer": 3,
+          "predicted_answer_count": 37,
+          "selected_total": 309,
+          "relevant_selected": 164,
+          "case_count": 41
+        },
+        "constraint_satisfied": true,
+        "duplicate_case_rows_dropped": 1,
+        "baseline_on_split": {
+          "case_count": 18,
+          "answer_decision_accuracy": 0.4444,
+          "primary_metric_hits": 8,
+          "primary_metric_total": 18,
+          "evidence_precision": 0.075,
+          "task_success_rate": 0.4444,
+          "task_success_passes": 8,
+          "task_success_total": 18
+        },
+        "tuned_on_split": {
+          "case_count": 18,
+          "answer_decision_accuracy": 0.6667,
+          "primary_metric_hits": 12,
+          "primary_metric_total": 18,
+          "evidence_precision": 0.1951,
+          "task_success_rate": 0.6667,
+          "task_success_passes": 12,
+          "task_success_total": 18
+        }
+      },
+      "case_results": [
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_043",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.014,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": false,
+            "decision_ok": true,
+            "selected_total": 0,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [],
+            "candidate_max_score": 0.4394,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_044",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.012,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 20,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "los-angeles:1016095637240206839",
+              "los-angeles:1142208794389546342",
+              "los-angeles:1244320130207728560",
+              "los-angeles:1322712280735482078",
+              "los-angeles:1387867612941056822",
+              "los-angeles:1403824224724908213"
+            ],
+            "candidate_max_score": 0.7151,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_045",
+          "pass": false,
+          "failure_reason": "decision_or_evidence_mismatch",
+          "latency_ms": 0.006,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": true,
+            "decision_ok": false,
+            "selected_total": 3,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "los-angeles:1233529190826522436",
+              "los-angeles:650268237",
+              "los-angeles:807310409686170492"
+            ],
+            "candidate_max_score": 0.5067,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_046",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.008,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 15,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "san-mateo:137654365",
+              "san-mateo:179119142",
+              "san-mateo:249749004",
+              "san-mateo:337598988",
+              "san-mateo:405810839",
+              "san-mateo:413646545"
+            ],
+            "candidate_max_score": 0.5627,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_047",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.005,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 4,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "santa-cruz-county:101371892",
+              "santa-cruz-county:1180609156960372168",
+              "santa-cruz-county:127881853",
+              "santa-cruz-county:673630897"
+            ],
+            "candidate_max_score": 0.5099,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_048",
+          "pass": false,
+          "failure_reason": "decision_or_evidence_mismatch",
+          "latency_ms": 0.005,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": true,
+            "decision_ok": false,
+            "selected_total": 1,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "pacific-grove:349222739"
+            ],
+            "candidate_max_score": 0.4886,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_049",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.005,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 6,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "santa-cruz-county:218255277",
+              "santa-cruz-county:313628501",
+              "santa-cruz-county:430396401288316166",
+              "santa-cruz-county:516759158801053164",
+              "santa-cruz-county:664577941133436932",
+              "santa-cruz-county:666892491"
+            ],
+            "candidate_max_score": 0.5859,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_050",
+          "pass": false,
+          "failure_reason": "decision_or_evidence_mismatch",
+          "latency_ms": 0.005,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": true,
+            "decision_ok": false,
+            "selected_total": 1,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "san-mateo:257564736"
+            ],
+            "candidate_max_score": 0.4994,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_051",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.006,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 12,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "santa-cruz-county:1063267298677875283",
+              "santa-cruz-county:1125517055027592578",
+              "santa-cruz-county:1377007635192105300",
+              "santa-cruz-county:292321843",
+              "santa-cruz-county:351397828",
+              "santa-cruz-county:415216817016807410"
+            ],
+            "candidate_max_score": 0.5442,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_052",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.005,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": false,
+            "decision_ok": true,
+            "selected_total": 0,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [],
+            "candidate_max_score": 0.441,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_053",
+          "pass": false,
+          "failure_reason": "decision_or_evidence_mismatch",
+          "latency_ms": 0.005,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": true,
+            "decision_ok": false,
+            "selected_total": 1,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "san-diego:1305298235026118828"
+            ],
+            "candidate_max_score": 0.4871,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_054",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.008,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 20,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "los-angeles:1046526472494378997",
+              "los-angeles:1084257821893744281",
+              "los-angeles:1122645742120951090",
+              "los-angeles:1176289067712541979",
+              "los-angeles:394259676718902458",
+              "los-angeles:411573573206644862"
+            ],
+            "candidate_max_score": 0.6042,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_055",
+          "pass": false,
+          "failure_reason": "decision_or_evidence_mismatch",
+          "latency_ms": 0.004,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": true,
+            "decision_ok": false,
+            "selected_total": 2,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "santa-cruz-county:291881904",
+              "santa-cruz-county:331102656"
+            ],
+            "candidate_max_score": 0.5041,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_056",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.007,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 20,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "san-diego:1019002451504217231",
+              "san-diego:1019672600311514072",
+              "san-diego:1045037901584838993",
+              "san-diego:1077658174275855979",
+              "san-diego:1081335505433472673",
+              "san-diego:1094403574882515938"
+            ],
+            "candidate_max_score": 0.5384,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_057",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.004,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": false,
+            "decision_ok": true,
+            "selected_total": 0,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [],
+            "candidate_max_score": 0.4753,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_058",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.004,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": false,
+            "decision_ok": true,
+            "selected_total": 0,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [],
+            "candidate_max_score": 0.4585,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_059",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.006,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": true,
+            "predicted_answer": true,
+            "decision_ok": true,
+            "selected_total": 8,
+            "relevant_selected": 3,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "san-diego:105824063",
+              "san-diego:1153804838462271121",
+              "san-diego:408014435548659521",
+              "san-diego:527609882808973566",
+              "san-diego:671802786716128120",
+              "san-diego:734293232"
+            ],
+            "candidate_max_score": 0.5606,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "reviews",
+          "split": "test",
+          "case_id": "case_060",
+          "pass": false,
+          "failure_reason": "decision_or_evidence_mismatch",
+          "latency_ms": 0.006,
+          "metadata": {
+            "threshold": 0.48,
+            "should_answer": false,
+            "predicted_answer": true,
+            "decision_ok": false,
+            "selected_total": 10,
+            "relevant_selected": 0,
+            "evidence_hit": true,
+            "selected_vector_ids_preview": [
+              "san-diego:1048679808468495157",
+              "san-diego:210904338",
+              "san-diego:229622551",
+              "san-diego:230968937",
+              "san-diego:338174847",
+              "san-diego:358026076"
+            ],
+            "candidate_max_score": 0.5639,
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        }
+      ]
+    },
+    "analyst": {
+      "agent": "analyst",
+      "split": "test",
+      "primary_metric_name": "numeric_computation_accuracy",
+      "primary_metric": 1.0,
+      "metrics": {
+        "case_count": 8,
+        "numeric_computation_accuracy": 1.0,
+        "task_success_rate": 1.0,
+        "primary_metric_hits": 4,
+        "primary_metric_total": 4,
+        "task_success_passes": 8,
+        "task_success_total": 8
+      },
+      "reliability": {
+        "crash_free_rate": 1.0,
+        "contract_pass_rate": 1.0,
+        "step_trace_completeness": 1.0,
+        "p95_latency_ms": 0.47
+      },
+      "task_success_rate": 1.0,
+      "case_results": [
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_001",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.448,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_002",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.029,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_003",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.02,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_004",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.482,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_005",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.027,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_006",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.018,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_007",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.315,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "analyst",
+          "split": "test",
+          "case_id": "analyst_test_008",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.239,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        }
+      ]
+    },
+    "pricing": {
+      "agent": "pricing",
+      "split": "test",
+      "primary_metric_name": "recommendation_direction_accuracy",
+      "primary_metric": 1.0,
+      "metrics": {
+        "case_count": 8,
+        "recommendation_direction_accuracy": 1.0,
+        "task_success_rate": 0.875,
+        "primary_metric_hits": 4,
+        "primary_metric_total": 4,
+        "task_success_passes": 7,
+        "task_success_total": 8
+      },
+      "reliability": {
+        "crash_free_rate": 1.0,
+        "contract_pass_rate": 1.0,
+        "step_trace_completeness": 1.0,
+        "p95_latency_ms": 0.527
+      },
+      "task_success_rate": 0.875,
+      "case_results": [
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_001",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.557,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_002",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.055,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_003",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.039,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_004",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.472,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_005",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.471,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_006",
+          "pass": false,
+          "failure_reason": "recommendation_expectation_mismatch",
+          "latency_ms": 0.347,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_007",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.025,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "pricing",
+          "split": "test",
+          "case_id": "pricing_test_008",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.022,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        }
+      ]
+    },
+    "market_watch": {
+      "agent": "market_watch",
+      "split": "test",
+      "primary_metric_name": "alert_detection_accuracy",
+      "primary_metric": 1.0,
+      "metrics": {
+        "case_count": 8,
+        "alert_detection_accuracy": 1.0,
+        "task_success_rate": 1.0,
+        "primary_metric_hits": 4,
+        "primary_metric_total": 4,
+        "task_success_passes": 8,
+        "task_success_total": 8
+      },
+      "reliability": {
+        "crash_free_rate": 1.0,
+        "contract_pass_rate": 1.0,
+        "step_trace_completeness": 1.0,
+        "p95_latency_ms": 3.083
+      },
+      "task_success_rate": 1.0,
+      "case_results": [
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_001",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.657,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_002",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.321,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_003",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 2.985,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_004",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 2.942,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_005",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 3.126,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_006",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.314,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_007",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.428,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        },
+        {
+          "agent": "market_watch",
+          "split": "test",
+          "case_id": "market_test_008",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 3.004,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null
+          }
+        }
+      ]
+    },
+    "mail": {
+      "agent": "mail",
+      "split": "test",
+      "primary_metric_name": "classification_accuracy",
+      "primary_metric": 1.0,
+      "metrics": {
+        "case_count": 9,
+        "classification_accuracy": 1.0,
+        "primary_metric_hits": 9,
+        "primary_metric_total": 9,
+        "policy_action_accuracy": 0.7778,
+        "task_success_rate": 0.7778,
+        "task_success_passes": 7,
+        "task_success_total": 9
+      },
+      "reliability": {
+        "crash_free_rate": 1.0,
+        "contract_pass_rate": 1.0,
+        "step_trace_completeness": 1.0,
+        "p95_latency_ms": 1.413
+      },
+      "task_success_rate": 0.7778,
+      "case_results": [
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_001",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.412,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [new_property_review] New review from guest Casey: 5 stars (Guest: Casey)\n   Action: response_draft_ready | Rating: 5/5 | Requires owner action\n   Draft: Offline-eval drafted response.\n   Reason: Good review; suggested response draft generated",
+            "mail_action": {
+              "email_id": "mock-review-good-001",
+              "thread_id": "thread-review-good",
+              "reply_to": "no-reply@airbnb.com",
+              "subject": "New review from guest Casey: 5 stars",
+              "in_reply_to": null,
+              "references": null,
+              "category": "new_property_review",
+              "guest_name": "Casey",
+              "rating": 5,
+              "action": "response_draft_ready",
+              "draft": "Offline-eval drafted response.",
+              "requires_owner": true,
+              "reason": "Good review; suggested response draft generated"
+            },
+            "draft_text": "Offline-eval drafted response.",
+            "predicted_category": "new_property_review"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_002",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.414,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [unsupported_airbnb] \n   Action: no_action\n   Reason: Unsupported Airbnb email subtype",
+            "mail_action": {
+              "email_id": "mock-unsupported-001",
+              "category": "unsupported_airbnb",
+              "action": "no_action",
+              "reason": "Unsupported Airbnb email subtype",
+              "requires_owner": false
+            },
+            "draft_text": null,
+            "predicted_category": "unsupported_airbnb"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_003",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.414,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "No actionable Airbnb emails found in your inbox.",
+            "mail_action": null,
+            "draft_text": null,
+            "predicted_category": "non_airbnb"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_004",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.115,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [new_property_review] New review from guest Riley: 2 stars (Guest: Riley)\n   Action: response_draft_ready | Rating: 2/5 | Requires owner action\n   Draft: Offline-eval drafted response.\n   Reason: Review rating (2/5) is at or below threshold (3). Owner must review before any response.",
+            "mail_action": {
+              "email_id": "mock-review-bad-001",
+              "thread_id": "thread-review-bad",
+              "reply_to": "no-reply@airbnb.com",
+              "subject": "New review from guest Riley: 2 stars",
+              "in_reply_to": null,
+              "references": null,
+              "category": "new_property_review",
+              "guest_name": "Riley",
+              "rating": 2,
+              "action": "response_draft_ready",
+              "reason": "Review rating (2/5) is at or below threshold (3). Owner must review before any response.",
+              "requires_owner": true,
+              "draft": "Offline-eval drafted response."
+            },
+            "draft_text": "Offline-eval drafted response.",
+            "predicted_category": "new_property_review"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_005",
+          "pass": false,
+          "failure_reason": "classification_or_policy_mismatch",
+          "latency_ms": 0.964,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [guest_message] New message from guest Jordan (Guest: Jordan)\n   Action: owner_heads_up | Importance: high | Requires owner action\n   Reason: High-importance guest message requires owner attention",
+            "mail_action": {
+              "email_id": "mock-guest-mid-001",
+              "thread_id": "thread-guest-mid",
+              "reply_to": "automated@airbnb.com",
+              "subject": "New message from guest Jordan",
+              "in_reply_to": null,
+              "references": null,
+              "category": "guest_message",
+              "importance": "high",
+              "guest_name": "Jordan",
+              "action": "owner_heads_up",
+              "reason": "High-importance guest message requires owner attention",
+              "requires_owner": true,
+              "draft": null
+            },
+            "draft_text": null,
+            "predicted_category": "guest_message"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_006",
+          "pass": false,
+          "failure_reason": "classification_or_policy_mismatch",
+          "latency_ms": 0.938,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [guest_message] New message from guest Sam (Guest: Sam)\n   Action: owner_consult | Importance: uncertain | Requires owner action\n   Reason: Uncertain importance; owner consultation needed",
+            "mail_action": {
+              "email_id": "mock-guest-low-001",
+              "thread_id": "thread-guest-low",
+              "reply_to": "automated@airbnb.com",
+              "subject": "New message from guest Sam",
+              "in_reply_to": null,
+              "references": null,
+              "category": "guest_message",
+              "importance": "uncertain",
+              "guest_name": "Sam",
+              "action": "owner_consult",
+              "reason": "Uncertain importance; owner consultation needed",
+              "requires_owner": true,
+              "draft": null
+            },
+            "draft_text": null,
+            "predicted_category": "guest_message"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_007",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 0.911,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [new_property_review] New review from guest Morgan: 3 stars (Guest: Morgan)\n   Action: owner_consult_required | Rating: 3/5 | Requires owner action\n   Draft: Offline-eval drafted response.\n   Reason: Review rating (3/5) is at or below threshold (3). Owner must review before any response.",
+            "mail_action": {
+              "email_id": "mock-review-mid-001",
+              "thread_id": "thread-review-mid",
+              "reply_to": "no-reply@airbnb.com",
+              "subject": "New review from guest Morgan: 3 stars",
+              "in_reply_to": null,
+              "references": null,
+              "category": "new_property_review",
+              "guest_name": "Morgan",
+              "rating": 3,
+              "action": "owner_consult_required",
+              "reason": "Review rating (3/5) is at or below threshold (3). Owner must review before any response.",
+              "requires_owner": true,
+              "reply_options": [
+                {
+                  "style": "apologetic",
+                  "draft": "Offline-eval drafted response."
+                },
+                {
+                  "style": "neutral",
+                  "draft": "Offline-eval drafted response."
+                },
+                {
+                  "style": "brief_thanks",
+                  "draft": "Offline-eval drafted response."
+                }
+              ],
+              "draft": "Offline-eval drafted response."
+            },
+            "draft_text": "Offline-eval drafted response.",
+            "predicted_category": "new_property_review"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_008",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.097,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [leave_review_request] Leave a review for your guest Taylor (Guest: Taylor)\n   Action: review_draft_ready | Rating: 5/5 | Requires owner action\n   Draft: Offline-eval drafted response.",
+            "mail_action": {
+              "email_id": "mock-leave-001",
+              "thread_id": "thread-leave-001",
+              "reply_to": "no-reply@airbnb.com",
+              "subject": "Leave a review for your guest Taylor",
+              "in_reply_to": null,
+              "references": null,
+              "category": "leave_review_request",
+              "guest_name": "Taylor",
+              "action": "review_draft_ready",
+              "rating": 5,
+              "draft": "Offline-eval drafted response.",
+              "requires_owner": true
+            },
+            "draft_text": "Offline-eval drafted response.",
+            "predicted_category": "leave_review_request"
+          }
+        },
+        {
+          "agent": "mail",
+          "split": "test",
+          "case_id": "mail_test_009",
+          "pass": true,
+          "failure_reason": null,
+          "latency_ms": 1.083,
+          "metadata": {
+            "contract_ok": true,
+            "step_trace_ok": true,
+            "exception": null,
+            "response_text": "Processed 1 Airbnb email(s):\n\n\n1. [new_property_review] New review from guest Riley: 2 stars (Guest: Riley)\n   Action: owner_chose_dont_reply | Rating: 2/5\n   Reason: Owner chose not to reply",
+            "mail_action": {
+              "email_id": "mock-review-bad-001",
+              "thread_id": "thread-review-bad",
+              "reply_to": "no-reply@airbnb.com",
+              "subject": "New review from guest Riley: 2 stars",
+              "in_reply_to": null,
+              "references": null,
+              "category": "new_property_review",
+              "guest_name": "Riley",
+              "rating": 2,
+              "action": "owner_chose_dont_reply",
+              "requires_owner": false,
+              "draft": null,
+              "reason": "Owner chose not to reply"
+            },
+            "draft_text": null,
+            "predicted_category": "new_property_review"
+          }
+        }
+      ]
+    }
+  },
+  "rubric": {
+    "reviews": {
+      "status": "scored",
+      "scored_cases": 6,
+      "mean_total_score": 5.1667,
+      "distribution": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 1,
+        "4": 1,
+        "5": 0,
+        "6": 4
+      }
+    },
+    "mail": {
+      "status": "scored",
+      "scored_cases": 4,
+      "mean_total_score": 6,
+      "distribution": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 4
+      }
+    }
+  },
+  "overall": {
+    "mean_task_success_rate": 0.8639,
+    "agents_evaluated": 5
+  }
+}
