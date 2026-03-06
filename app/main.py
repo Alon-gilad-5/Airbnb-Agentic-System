@@ -103,7 +103,8 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
-ARCH_PATH = STATIC_DIR / "model_architecture.svg"
+ARCH_SVG_PATH = STATIC_DIR / "model_architecture.svg"
+ARCH_PNG_PATH = STATIC_DIR / "model_architecture.png"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -1420,15 +1421,17 @@ market_watch_scheduler = MarketWatchScheduler(
 )
 
 
-def _refresh_architecture_svg() -> None:
-    """Regenerate the architecture diagram, falling back to an existing file on write failure."""
+def _refresh_architecture_png() -> None:
+    """Regenerate the architecture diagram as PNG, falling back to an existing file on failure."""
 
     try:
-        ensure_architecture_svg(ARCH_PATH)
+        ensure_architecture_svg(ARCH_SVG_PATH)
+        import cairosvg
+        cairosvg.svg2png(url=str(ARCH_SVG_PATH), write_to=str(ARCH_PNG_PATH), scale=2)
     except Exception:
-        if not ARCH_PATH.exists():
+        if not ARCH_PNG_PATH.exists():
             raise
-        logger.warning("model_architecture regeneration failed, serving existing SVG", exc_info=True)
+        logger.warning("model_architecture regeneration failed, serving existing PNG", exc_info=True)
 
 
 @app.on_event("startup")
@@ -1436,7 +1439,7 @@ def startup() -> None:
     """Ensure static assets exist and start autonomous scheduler when configured."""
 
     try:
-        _refresh_architecture_svg()
+        _refresh_architecture_png()
     except Exception as exc:
         logger.warning(
             "model_architecture generation skipped: %s: %s",
@@ -1858,16 +1861,16 @@ def agent_info() -> AgentInfoResponse:
 
 @app.get("/api/model_architecture")
 def model_architecture() -> FileResponse:
-    """Required endpoint: returns architecture diagram SVG."""
+    """Required endpoint: returns architecture diagram as PNG."""
 
     try:
-        _refresh_architecture_svg()
+        _refresh_architecture_png()
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"model_architecture unavailable: {type(exc).__name__}: {exc}",
         ) from exc
-    return FileResponse(path=str(ARCH_PATH), media_type="image/svg+xml", filename="model_architecture.svg")
+    return FileResponse(path=str(ARCH_PNG_PATH), media_type="image/png", filename="model_architecture.png")
 
 
 @app.get("/api/market_watch/alerts", response_model=MarketWatchAlertsResponse)
