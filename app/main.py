@@ -1773,14 +1773,6 @@ def agent_info() -> AgentInfoResponse:
 
     example_steps = [
         StepLog(
-            module="dispatch",
-            prompt={"user_prompt": "What do guests think about wifi in Santa Clara?"},
-            response={
-                "selected_agent": "reviews_agent",
-                "reason": "Direct dispatch to reviews_agent.",
-            },
-        ),
-        StepLog(
             module="reviews_agent.retrieval",
             prompt={"top_k": 8, "metadata_filter": {"region": {"$eq": "santa clara"}}},
             response={"match_count": 8, "top_match_ids": ["santa-clara:123", "santa-clara:456"]},
@@ -2129,17 +2121,6 @@ def execute(payload: ExecuteRequest) -> ExecuteResponse:
         )
         if resolved_provider not in VALID_CHAT_PROVIDERS:
             resolved_provider = default_chat_provider
-
-        steps.append(StepLog(
-            module="dispatch",
-            prompt={"user_prompt": payload.prompt},
-            response={
-                "selected_agent": "reviews_agent",
-                "reason": "Direct dispatch to reviews_agent.",
-                "llm_provider_requested": requested_provider,
-                "llm_provider_resolved": resolved_provider,
-            },
-        ))
 
         provider_chat_service = chat_services_by_provider.get(resolved_provider)
         if provider_is_explicit and (provider_chat_service is None or not provider_chat_service.is_available):
